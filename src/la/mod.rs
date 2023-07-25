@@ -1,6 +1,6 @@
 use core::fmt;
 use std::alloc;
-use std::f32::{NEG_INFINITY, consts::E};
+use std::f64::{NEG_INFINITY, consts::E};
 use std::ops::{Range, Sub, Add, Mul, Div, Neg};
 use rand::{self, Rng};
 
@@ -10,7 +10,7 @@ pub struct Matrix {
     pub cols: usize,
     pub rows: usize,
     pub stride: usize,
-    pub ptr: *mut f32,
+    pub ptr: *mut f64,
     pub len: usize,
 }
 
@@ -83,10 +83,10 @@ impl Eq for Matrix {}
 impl Drop for Matrix {
     fn drop(&mut self) {
         unsafe {
-            let mem_size =std::mem::size_of::<f32>(); 
+            let mem_size =std::mem::size_of::<f64>(); 
             let layout = alloc::Layout::from_size_align_unchecked(                  
                 mem_size*self.len,
-                std::mem::align_of::<f32>());
+                std::mem::align_of::<f64>());
             alloc::dealloc(self.ptr as *mut u8, layout)
         }
     }
@@ -94,11 +94,11 @@ impl Drop for Matrix {
 
 impl Clone for Matrix {
     fn clone(&self) -> Self {
-        let mem_size =std::mem::size_of::<f32>(); 
-        let layout = alloc::Layout::array::<f32>(self.len*mem_size).expect("Could not create layout");
+        let mem_size =std::mem::size_of::<f64>(); 
+        let layout = alloc::Layout::array::<f64>(self.len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc(layout)
-        } as *mut f32;
+        } as *mut f64;
         unsafe {
             std::ptr::copy(self.ptr, ptr, self.len*mem_size)
         };
@@ -151,15 +151,15 @@ impl Neg for Matrix {
 impl Matrix {
     /// rows, cols
     pub fn new(rows: usize, cols: usize) -> Self {
-        let mem_size =std::mem::size_of::<f32>(); 
+        let mem_size =std::mem::size_of::<f64>(); 
         let mut len = cols*rows;
         if rows == 0 {
             len = cols*1;
         }
-        let layout = alloc::Layout::array::<f32>(len*mem_size).expect("Could not create layout");
+        let layout = alloc::Layout::array::<f64>(len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc(layout)
-        } as *mut f32;
+        } as *mut f64;
         Self {
             cols,
             rows,
@@ -170,15 +170,15 @@ impl Matrix {
     }
 
     pub fn zeroed(rows: usize, cols: usize) -> Self {
-        let mem_size =std::mem::size_of::<f32>(); 
+        let mem_size =std::mem::size_of::<f64>(); 
         let mut len = cols*rows;
         if rows == 0 {
             len = cols*1;
         }
-        let layout = alloc::Layout::array::<f32>(len*mem_size).expect("Could not create layout");
+        let layout = alloc::Layout::array::<f64>(len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc_zeroed(layout)
-        } as *mut f32;
+        } as *mut f64;
         Self {
             cols,
             rows,
@@ -188,25 +188,25 @@ impl Matrix {
         }
     }
 
-    pub fn random(rows: usize, cols: usize,  range: Range<f32>) -> Self {
+    pub fn random(rows: usize, cols: usize,  range: Range<f64>) -> Self {
         let matrix = Self::zeroed(rows, cols);
         let mut rng = rand::thread_rng();
         unsafe {
             for i in 0..matrix.len {
-                let r: f32 = rng.gen_range(range.clone());
+                let r: f64 = rng.gen_range(range.clone());
                 matrix.ptr.add(i).write(r);
             }
         }
         matrix
     }
 
-    pub fn from_vec(mut data: Vec<f32>) -> Self {
+    pub fn from_vec(mut data: Vec<f64>) -> Self {
         let len = data.len();
-        let mem_size =std::mem::size_of::<f32>(); 
-        let layout = alloc::Layout::array::<f32>(len*mem_size).expect("Could not create layout");
+        let mem_size =std::mem::size_of::<f64>(); 
+        let layout = alloc::Layout::array::<f64>(len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc(layout)
-        } as *mut f32;
+        } as *mut f64;
         unsafe {ptr.copy_from(data.as_mut_ptr(), len)};
         Self {
             cols: len,
@@ -217,11 +217,11 @@ impl Matrix {
         }
 
     }
-    pub fn from_vec2(data: Vec<Vec<f32>>) -> Self {
+    pub fn from_vec2(data: Vec<Vec<f64>>) -> Self {
         let rows = data.len();
         let cols = data[0].len();
         let matrix = Self::zeroed(rows, cols);
-        let mut flattened: Vec<f32> = data.into_iter().flatten().collect();
+        let mut flattened: Vec<f64> = data.into_iter().flatten().collect();
         unsafe {
             matrix.ptr.copy_from(flattened.as_mut_ptr(), matrix.len);
         }
@@ -232,7 +232,7 @@ impl Matrix {
         (self.rows, self.cols)
     }
 
-    pub fn get(&self, index: MatIdx) -> f32 {
+    pub fn get(&self, index: MatIdx) -> f64 {
         let (rows, cols) = index;
         if self.rows == 0 {
             assert!(cols < self.cols, "index out of range");
@@ -244,7 +244,7 @@ impl Matrix {
         }
     }
 
-    pub fn set(&self, f: f32, index: MatIdx) {
+    pub fn set(&self, f: f64, index: MatIdx) {
         let (rows, cols) = index;
         if self.rows == 0 {
             assert!(cols < self.cols,  "index out of range");
@@ -260,7 +260,7 @@ impl Matrix {
             return self.clone()
         }
         assert!(row < self.rows, "index out of range");
-        let mut vector = Vec::<f32>::with_capacity(self.cols);
+        let mut vector = Vec::<f64>::with_capacity(self.cols);
         unsafe {
             let offset = self.ptr.add(row*self.stride);
             for i in 0..self.cols {
@@ -466,7 +466,7 @@ impl Matrix {
 
     fn get_col(&self, col: usize) -> Matrix {
         assert!(col < self.cols, "index out of range");
-        let mut vector = Vec::<f32>::with_capacity(self.rows);
+        let mut vector = Vec::<f64>::with_capacity(self.rows);
         let mut idx = col;
         for _ in 0..self.rows {
             let val = unsafe {
@@ -486,7 +486,7 @@ impl Matrix {
         //copy new matrix data to self.ptr data
     }
 
-    pub fn scalar_mul(&self, scalar: f32) {
+    pub fn scalar_mul(&self, scalar: f64) {
         unsafe {
             for i in 0..self.len {
                 let offset = self.ptr.add(i);
@@ -499,7 +499,7 @@ impl Matrix {
 
 
 
-    pub fn scalar_div(&self, scalar: f32) {
+    pub fn scalar_div(&self, scalar: f64) {
         if scalar == 0.0 {
             panic!("Division by zero impossible");
         }
@@ -530,9 +530,9 @@ impl Matrix {
         }
     }
 
-    pub fn vector_dot(&self, other: &Matrix) -> f32 {
+    pub fn vector_dot(&self, other: &Matrix) -> f64 {
         assert!(self.is_vector() && other.is_vector() && self.cols == other.cols);
-        let mut result: f32 = 0.0;
+        let mut result: f64 = 0.0;
         unsafe {
             for i in 0..self.cols {
                 let v1 = self.ptr.add(i).read();    
@@ -574,7 +574,7 @@ impl Matrix {
 
     pub fn vector_add(&self, other: &Matrix) -> Matrix {
         assert!(self.is_vector() && other.is_vector() && self.cols == other.cols);
-        let mut result: Vec<f32> = Vec::with_capacity(self.cols);
+        let mut result: Vec<f64> = Vec::with_capacity(self.cols);
         unsafe {
             for i in 0..self.cols {
                 let v1 = self.ptr.add(i).read();    
@@ -595,7 +595,7 @@ impl Matrix {
     ///|->  -> |
     ///|   |   |
     
-    pub fn sum(&self) -> f32 {
+    pub fn sum(&self) -> f64 {
         let mut acc = 0.0;
         unsafe {
             for i in 0..self.len {
@@ -639,7 +639,7 @@ impl Matrix {
         }
     }
 
-    pub fn max(&self) -> f32 {
+    pub fn max(&self) -> f64 {
         let mut max = NEG_INFINITY;
         unsafe {
             for i in 0..self.len {
@@ -688,6 +688,59 @@ impl Matrix {
         }
     }
 
+
+    pub fn argmax(&self) -> MatIdx {
+        let mut max = NEG_INFINITY;
+        let mut idx: MatIdx = (0, 0);
+        if self.is_vector() {
+            for j in 0..self.cols {
+                let v = self.get((0, j));
+                if v > max {
+                    max = v;
+                    idx = (0, j);
+                }
+            }
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let v = self.get((i, j));
+                    if v > max {
+                        max = v;
+                        idx = (i, j);
+                    }
+                }
+            }
+        }
+        if max == NEG_INFINITY {
+            panic!("could not determine max")
+        }
+        idx
+    }
+
+    pub fn argmax_axis(&self, axis: usize) -> Vec<usize> {
+        match axis {
+           0 => {
+                let mut result: Vec<usize> = vec![];
+                for i in 0..self.cols {
+                    let col = self.get_col(i);
+                    result.push(col.argmax().1);
+                }
+                result
+            },
+            1 => {
+                let mut result: Vec<usize> = vec![];
+                for i in 0..self.rows {
+                    let row = self.get_row(i);
+                    result.push(row.argmax().1)
+                }
+                result
+            },
+            _ => {
+                panic!("axis {axis} does not exist on Matrix")
+            }
+        }
+    }
+
     pub fn log(&self) -> Matrix {
         self.for_each_set(|x| x.ln())
     }
@@ -696,8 +749,8 @@ impl Matrix {
         self.for_each_set(|x| -(x.ln()))
     }
 
-    pub fn mean(&self) -> f32 {
-        self.sum() / self.len as f32
+    pub fn mean(&self) -> f64 {
+        self.sum() / self.len as f64
     }
     pub fn mean_axis(&self,axis: usize, keepdims: bool) -> Matrix {
         match axis {
@@ -739,7 +792,7 @@ impl Matrix {
         self.stride = 1;
     }
 
-    pub fn maximum_scalar(&self, s: f32) -> Matrix {
+    pub fn maximum_scalar(&self, s: f64) -> Matrix {
         let result = Matrix::new(self.rows, self.cols);
         for i in 0..self.rows {
             let row = self.get_row(i);
@@ -773,7 +826,7 @@ impl Matrix {
     }
 
     // scalar compared with each element in vector, returns new matr
-    pub fn vector_scalar_maximum(&self, s: f32) -> Matrix {
+    pub fn vector_scalar_maximum(&self, s: f64) -> Matrix {
         assert!(self.is_vector(), "vector_scalar_maximum() requires self to be a vector");
         let result = Matrix::new(0, self.len);
         for i in 0..self.len {
@@ -804,7 +857,7 @@ impl Matrix {
 
     pub fn all<F>(&self, f: F) -> bool 
     where 
-        F: Fn(f32) -> bool  
+        F: Fn(f64) -> bool  
     {
         for i in 0..self.rows {
             for j in 0..self.cols {
@@ -821,7 +874,7 @@ impl Matrix {
 
     pub fn for_each_set<F>(&self, f: F) -> Matrix 
     where 
-        F: Fn(f32) -> f32  
+        F: Fn(f64) -> f64  
     {
         let result = Matrix::new(self.rows, self.cols);
         if self.is_vector() {
@@ -842,7 +895,7 @@ impl Matrix {
         result
     } 
 
-    pub fn clip(&self, low: f32, high: f32) {
+    pub fn clip(&self, low: f64, high: f64) {
         if self.is_vector() {
             for j in 0..self.cols {
                 let v = self.get((0,j));
@@ -867,6 +920,18 @@ impl Matrix {
             }
         }
     }
+
+    ///only on vector
+    pub fn index_slicing(&self, range: Range<usize>, src: Matrix) -> Matrix {
+        assert!(src.is_vector(), "index_slicing is only implemented for vectors");
+        let vector = Matrix::new(0, range.end);
+        for i in range {
+            let idx = src.get((0, i));
+            let v = self.get((i, idx as usize));
+            vector.set(v, (0, i));
+        }
+        vector
+    } 
 
     pub fn is_vector(&self) -> bool {
         self.rows == 0  
@@ -1036,6 +1101,22 @@ mod test {
     }
 
     #[test]
+    fn la_matrix_argmax() {
+        let mat = Matrix::from_vec2(vec![vec![10.0,11.0], vec![12.0,13.0]]);
+        let max = mat.argmax();
+        let exp: MatIdx = (1,1);
+        assert_eq!(exp, max);
+
+        let max_0 = mat.argmax_axis(0);
+        let exp_0: Vec<usize> = vec![1, 1];
+        assert_eq!(exp_0, max_0);
+
+        let max_1 = mat.argmax_axis(1);
+        let exp_1: Vec<usize> = vec![1,1];
+        assert_eq!(exp_1, max_1);
+    }
+
+    #[test]
     fn la_matrix_mean() {
         let mat = Matrix::from_vec2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
         let exp_all = 2.5;
@@ -1126,8 +1207,8 @@ mod test {
     fn la_matrix_exponent() {
         let mat_exp = Matrix::from_vec2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
         let exp_exp = Matrix::from_vec2(vec![
-            vec![2.7182817, 7.3890557],
-            vec![20.085535, 54.598145]
+ 	vec![2.718281828459045, 7.3890560989306495 ],
+	vec![20.085536923187664, 54.59815003314423 ]
         ]);
         let res = mat_exp.exp();
         assert_eq!(res, exp_exp);
@@ -1144,8 +1225,8 @@ mod test {
     #[test]
     fn la_matrix_log() {
         let data = Matrix::from_vec(vec![0.7,0.5,0.9]);
-        let res_pos = Matrix::from_vec(vec![-0.35667497, -0.6931472, -0.105360545]);
-        let res_neg = Matrix::from_vec(vec![0.35667497, 0.6931472, 0.105360545]);
+        let res_pos = Matrix::from_vec(vec![-0.35667494393873245, -0.6931471805599453, -0.10536051565782628 ]);
+        let res_neg = Matrix::from_vec(vec![0.35667494393873245, 0.6931471805599453, 0.10536051565782628 ]);
         assert_eq!(data.log(), res_pos);
         assert_eq!(data.neg_log(), res_neg);
         assert_eq!(-data.log(), res_neg);
@@ -1166,6 +1247,12 @@ mod test {
         let v4 = Matrix::from_vec(vec![0.000001, -1.22, 0.001, 0.22, 1.0]);
         let exp2 = Matrix::from_vec(vec![0.000001, -1.22, 0.01, 0.22, 1.0]);
         assert_eq!(v3.vector_maximum(&v4), exp2);
+        let indices = Matrix::from_vec(vec![0.0,1.0,2.0]);
+        let values = Matrix::from_vec2(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0], vec![7.0, 8.0, 9.0]]);
+        let res = Matrix::from_vec(vec![1.0, 5.0, 9.0]);
+        assert_eq!(values.index_slicing(0..values.rows, indices), res);
+
+
     }
 
     #[test]
