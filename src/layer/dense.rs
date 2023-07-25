@@ -1,10 +1,26 @@
-use crate::la::Matrix;
+//This code is heavily derived from www.nnfs.io and all credit goes to
+//Harrison Kinsley & Daniel Kukieła
+//
+//That being said this very code, the Rust version, is under MIT license. 
 
-pub struct Dense {
+use crate::la::Matrix;
+use crate::layer::Layer;
+
+pub struct Dense 
+{
     pub weights: Matrix,
     pub biases: Matrix,
     pub inputs: Matrix,
     pub outputs: Matrix
+}
+
+impl Layer for Dense {
+    fn forward(&mut self, inputs: &Matrix) {
+        self.inputs = inputs.clone();
+        let dot = self.inputs.dot(&self.weights);
+        dot.add_vector(&self.biases);
+        self.outputs = dot.clone()
+    }
 }
 
 impl Dense {
@@ -15,13 +31,6 @@ impl Dense {
             inputs: Matrix::new(1,1),
             outputs: Matrix::new(1,1),
         }
-    }
-
-    pub fn forward(&mut self, inputs: Matrix) {
-        self.inputs = inputs.clone();
-        let dot = self.inputs.dot(&self.weights);
-        dot.add_vector(&self.biases);
-        self.outputs = dot.clone()
     }
 }
 
@@ -40,7 +49,7 @@ mod test {
         ]);
         
         let mut layer = Dense::new(2, 3);
-        layer.forward(data);
+        layer.forward(&data);
         let outs = layer.outputs;
         mat_dump!(outs);
     }
