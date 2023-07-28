@@ -1,70 +1,86 @@
+#![allow(unused)]
 use core::fmt;
 use std::alloc;
-use std::f64::{NEG_INFINITY, consts::E};
-use std::ops::{Range, Sub, Add, Mul, Div, Neg};
+use std::f64::consts::E;
+use std::ops::{Index, Range, Sub, SubAssign, AddAssign, Add, Mul, Div, Neg};
+use rand::distributions::uniform::{SampleRange, SampleUniform};
 use rand::{self, Rng};
 
 
 
-pub struct Matrix {
+pub struct Matrix<T> {
     pub cols: usize,
     pub rows: usize,
     pub stride: usize,
-    pub ptr: *mut f64,
+    pub ptr: *mut T,
     pub len: usize,
 }
-
+///(rows, cols)
 type MatIdx = (usize, usize);
 
 
-macro_rules! mat {
-    ($rows:expr, $cols:expr) => {
-        Matrix::zeroed($rows, $cols)
-    }
-}
-
-macro_rules! mat_dump {
-    ($mat:ident) => {
-        {
-            if $mat.is_vector() {
-                let mut s = String::from("[ ");
-                for i in 0..$mat.len {
-                    s = format!("{s} {}", $mat.get((0, i)));
-                }
-                s = format!("{s} ]\n");
-                println!("{s}");
-                s
-            } else {
-                let mut s = String::from("[\n");
-                for i in 0..$mat.rows {
-                    s = format!("{s}\t[");
-                    for j in 0..$mat.cols {
-                        s = format!("{s} {}", $mat.get((i, j)));
-                    }
-                    s = format!("{s} ]\n");
-                }
-                s = format!("{s}]\n");
-                println!("{s}");
-                s
+impl<T: fmt::Debug + fmt::Display + Add + Sub + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Default + Mul<Output = T>> fmt::Display for Matrix<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = String::from("[ ");
+        if self.is_vector() {
+            for i in 0..self.len {
+                s = format!("{s}{}, ", self.get((0, i)));
             }
+            s.pop();
+            s.pop();
+            s = format!("{s}]\n");
+            f.write_str(s.as_str())
+        } else {
+            let mut s = String::from("[\n");
+            for i in 0..self.rows {
+                s = format!("{s}\t[");
+                for j in 0..self.cols {
+                    s = format!("{s}{}, ", self.get((i, j)));
+                }
+                s.pop();
+                s.pop();
+                s = format!("{s}],\n");
+            }
+            s.pop();
+            s.pop();
+            s = format!("{s}\n]\n");
+            f.write_str(s.as_str())
         }
     }
 }
 
-impl fmt::Display for Matrix {
+impl<T: fmt::Debug + fmt::Display + Add + AddAssign + Sub + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Default + Mul<Output = T>> fmt::Debug for Matrix<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(mat_dump!(self).as_str())
+        let mut s = String::from("[");
+        if self.is_vector() {
+            for i in 0..self.len {
+                s = format!("{s}{}, ", self.get((0, i)));
+            }
+            s.pop();
+            s.pop();
+            s = format!("{s}]\n");
+            f.write_str(s.as_str())
+        } else {
+            let mut s = String::from("[\n");
+            for i in 0..self.rows {
+                s = format!("{s}\t[");
+                for j in 0..self.cols {
+                    s = format!("{s}{}, ", self.get((i, j)));
+                }
+                s.pop();
+                s.pop();
+                s = format!("{s}],\n");
+            }
+            s.pop();
+            s.pop();
+            s = format!("{s}\n]\n");
+            f.write_str(s.as_str())
+        }
     }
 }
 
-impl fmt::Debug for Matrix {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(mat_dump!(self).as_str())
-    }
-}
 
-
-impl PartialEq for Matrix {
+impl<T: PartialEq> PartialEq for Matrix<T> {
     fn eq(&self, other: &Self) -> bool {
         if self.cols == other.cols && self.rows == other.rows && self.len == other.len {
         unsafe {
@@ -78,27 +94,27 @@ impl PartialEq for Matrix {
     }
 }
 
-impl Eq for Matrix {}
+impl<T: PartialEq> Eq for Matrix<T> {}
 
-impl Drop for Matrix {
+impl<T> Drop for Matrix<T> {
     fn drop(&mut self) {
         unsafe {
-            let mem_size =std::mem::size_of::<f64>(); 
+            let mem_size =std::mem::size_of::<T>(); 
             let layout = alloc::Layout::from_size_align_unchecked(                  
                 mem_size*self.len,
-                std::mem::align_of::<f64>());
+                std::mem::align_of::<T>());
             alloc::dealloc(self.ptr as *mut u8, layout)
         }
     }
 }
 
-impl Clone for Matrix {
+impl<T> Clone for Matrix<T> {
     fn clone(&self) -> Self {
-        let mem_size =std::mem::size_of::<f64>(); 
-        let layout = alloc::Layout::array::<f64>(self.len*mem_size).expect("Could not create layout");
+        let mem_size =std::mem::size_of::<T>(); 
+        let layout = alloc::Layout::array::<T>(self.len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc(layout)
-        } as *mut f64;
+        } as *mut T;
         unsafe {
             std::ptr::copy(self.ptr, ptr, self.len*mem_size)
         };
@@ -112,54 +128,19 @@ impl Clone for Matrix {
     }
 }
 
-impl Sub for Matrix {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        self.subtract(&rhs)
-    }
-}
-
-impl Add for Matrix {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        self.addition(&rhs)
-    }
-}
-
-impl Mul for Matrix {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self::Output {
-        self.multiplication(&rhs)
-    }
-}
-
-impl Div for Matrix {
-    type Output = Self;
-    fn div(self, rhs: Self) -> Self::Output {
-        self.division(&rhs)
-    }
-}
-
-impl Neg for Matrix {
-    type Output = Self;
-    fn neg(self) -> Self::Output {
-        self.negative();
-        return self
-    }
-}
-
-impl Matrix {
+impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Default + Mul<Output = T>> Matrix<T> {
     /// rows, cols
-    pub fn new(rows: usize, cols: usize) -> Self {
-        let mem_size =std::mem::size_of::<f64>(); 
+    pub fn new(index: MatIdx) -> Self {
+        let mem_size =std::mem::size_of::<T>(); 
+        let (rows, cols) = index;
         let mut len = cols*rows;
         if rows == 0 {
             len = cols*1;
         }
-        let layout = alloc::Layout::array::<f64>(len*mem_size).expect("Could not create layout");
+        let layout = alloc::Layout::array::<T>(len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc(layout)
-        } as *mut f64;
+        } as *mut T;
         Self {
             cols,
             rows,
@@ -169,44 +150,57 @@ impl Matrix {
         }
     }
 
-    pub fn zeroed(rows: usize, cols: usize) -> Self {
-        let mem_size =std::mem::size_of::<f64>(); 
-        let mut len = cols*rows;
-        if rows == 0 {
-            len = cols*1;
-        }
-        let layout = alloc::Layout::array::<f64>(len*mem_size).expect("Could not create layout");
-        let ptr = unsafe {
-            alloc::alloc_zeroed(layout)
-        } as *mut f64;
-        Self {
-            cols,
-            rows,
-            stride: cols,
-            ptr,
-            len
-        }
+    /// Creates a [`Matrix`] with the shape of the provided Matrix.
+    pub fn like(mat: &Matrix<T>) -> Self {
+        Self::new(mat.shape())
     }
 
-    pub fn random(rows: usize, cols: usize,  range: Range<f64>) -> Self {
-        let matrix = Self::zeroed(rows, cols);
-        let mut rng = rand::thread_rng();
+    /// Creates a [`Matrix`] with the shape of the provided Matrix and fills
+    /// it with the provided value.
+    /// Use this for type casting!
+    pub fn like_with(mat: &Matrix<T>, v: T) -> Self {
+        let m = Self::like(mat);
         unsafe {
-            for i in 0..matrix.len {
-                let r: f64 = rng.gen_range(range.clone());
-                matrix.ptr.add(i).write(r);
+            for i in 0..m.len {
+                m.ptr.add(i).write(v);
             }
         }
-        matrix
+        m
+    }
+ 
+    pub fn zeroed(index: MatIdx) -> Self {
+        let mem_size =std::mem::size_of::<T>(); 
+        let (rows, cols) = index;
+        let mut len = cols*rows;
+        if rows == 0 {
+            len = cols*1;
+        }
+        let layout = alloc::Layout::array::<T>(len*mem_size).expect("Could not create layout");
+        let ptr = unsafe {
+            alloc::alloc_zeroed(layout)
+        } as *mut T;
+        Self {
+            cols,
+            rows,
+            stride: cols,
+            ptr,
+            len
+        }
     }
 
-    pub fn from_vec(mut data: Vec<f64>) -> Self {
+    
+
+    pub fn indices_one_hot(indices: &Matrix<T>, n: usize) -> Matrix<T> {
+        todo!()
+    }
+
+    pub fn from_vec(mut data: Vec<T>) -> Self {
         let len = data.len();
-        let mem_size =std::mem::size_of::<f64>(); 
-        let layout = alloc::Layout::array::<f64>(len*mem_size).expect("Could not create layout");
+        let mem_size =std::mem::size_of::<T>(); 
+        let layout = alloc::Layout::array::<T>(len*mem_size).expect("Could not create layout");
         let ptr = unsafe {
             alloc::alloc(layout)
-        } as *mut f64;
+        } as *mut T;
         unsafe {ptr.copy_from(data.as_mut_ptr(), len)};
         Self {
             cols: len,
@@ -215,13 +209,13 @@ impl Matrix {
             ptr,
             len
         }
-
     }
-    pub fn from_vec2(data: Vec<Vec<f64>>) -> Self {
+
+    pub fn from_vec2(data: Vec<Vec<T>>) -> Self {
         let rows = data.len();
         let cols = data[0].len();
-        let matrix = Self::zeroed(rows, cols);
-        let mut flattened: Vec<f64> = data.into_iter().flatten().collect();
+        let matrix = Self::zeroed((rows, cols));
+        let mut flattened: Vec<T> = data.into_iter().flatten().collect();
         unsafe {
             matrix.ptr.copy_from(flattened.as_mut_ptr(), matrix.len);
         }
@@ -232,7 +226,11 @@ impl Matrix {
         (self.rows, self.cols)
     }
 
-    pub fn get(&self, index: MatIdx) -> f64 {
+    pub fn is_vector(&self) -> bool {
+        self.rows == 0
+    }
+
+    pub fn get(&self, index: MatIdx) -> T {
         let (rows, cols) = index;
         if self.rows == 0 {
             assert!(cols < self.cols, "index out of range");
@@ -244,7 +242,7 @@ impl Matrix {
         }
     }
 
-    pub fn set(&self, f: f64, index: MatIdx) {
+    pub fn set(&self, f: T, index: MatIdx) {
         let (rows, cols) = index;
         if self.rows == 0 {
             assert!(cols < self.cols,  "index out of range");
@@ -255,22 +253,23 @@ impl Matrix {
             self.ptr.add(rows*self.stride + cols).write(f)
         }
     }
-    fn get_row(&self, row: usize) -> Matrix {
+
+    fn get_row(&self, row: usize) -> Matrix<T> {
         if self.is_vector() {
             return self.clone()
         }
         assert!(row < self.rows, "index out of range");
-        let mut vector = Vec::<f64>::with_capacity(self.cols);
+        let mat = Matrix::new((0, self.cols));
         unsafe {
             let offset = self.ptr.add(row*self.stride);
             for i in 0..self.cols {
-                vector.push(offset.add(i).read())
+                mat.set(offset.add(i).read(), (0, i))
             }
         };
-        Matrix::from_vec(vector)
+        mat
     }
 
-    fn set_row(&self, i: usize, row: &Matrix) {
+    fn set_row(&self, i: usize, row: &Matrix<T>) {
         assert!(row.is_vector(), "src is not a vector");
         assert!(self.cols == row.cols, "cols don't match");
         self.bound_check_rows(i);
@@ -282,508 +281,71 @@ impl Matrix {
         }
     }
 
-    fn set_col(&self, i: usize, col: &Matrix) {
-        assert!(col.is_vector(), "src is not a vector");
-        assert!(self.rows == col.cols, "rows don't match");
-        self.bound_check_cols(i);
-        for j in 0..self.rows {
-            let v = col.get((0, j));
-            self.set(v, (j, i));
-        }
-    }
-
-    pub fn subtract(&self, other: &Matrix) -> Matrix {
-        if self.shape_match(other) {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((i, j));
-                    result.set(lhs - rhs, (i, j))
-                }
-            }
-            result
-        } else if self.col_match(other) && other.is_vector() {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((0, j));
-                    result.set(lhs - rhs, (i, j))
-                }
-            }
-            result
-        } else if self.row_match(other) && other.cols == 1 {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.cols {
-                let col = self.get_col(i);
-                for j in 0..self.rows {
-                    let lhs = col.get((0,j));
-                    let rhs = other.get((j, 0));
-                    col.set(lhs - rhs, (0, j));
-                }
-                result.set_col(i, &col)
-            }
-            result
-        } else {
-            panic!("cannot match minuend and subtrahend")
-        }
-
-    }
-
-    pub fn addition(&self, other: &Matrix) -> Matrix {
-        if self.shape_match(other) {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((i, j));
-                    result.set(lhs + rhs, (i, j))
-                }
-            }
-            result
-        } else if self.col_match(other) && other.is_vector() {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((0, j));
-                    result.set(lhs + rhs, (i, j))
-                }
-            }
-            result
-        } else if self.row_match(other) && other.cols == 1 {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.cols {
-                let col = self.get_col(i);
-                for j in 0..self.rows {
-                    let lhs = col.get((0,j));
-                    let rhs = other.get((j, 0));
-                    col.set(lhs + rhs, (0, j));
-                }
-                result.set_col(i, &col)
-            }
-            result
-        } else {
-            panic!("cannot match addends")
-        }
-    }
-
-
-    pub fn multiplication(&self, other: &Matrix) -> Matrix {
-        if self.shape_match(other) {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((i, j));
-                    result.set(lhs * rhs, (i, j))
-                }
-            }
-            result
-        } else if self.col_match(other) && other.is_vector() {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((0, j));
-                    result.set(lhs * rhs, (i, j))
-                }
-            }
-            result
-        } else if self.row_match(other) && other.cols == 1 {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.cols {
-                let col = self.get_col(i);
-                for j in 0..self.rows {
-                    let lhs = col.get((0,j));
-                    let rhs = other.get((j, 0));
-                    col.set(lhs * rhs, (0, j));
-                }
-                result.set_col(i, &col)
-            }
-            result
-        } else {
-            panic!("cannot match multiplicand and multiplier")
-        }
-    }
-
-    pub fn division(&self, other: &Matrix) -> Matrix {
-        if self.shape_match(other) {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((i, j));
-                    result.set(lhs / rhs, (i, j))
-                }
-            }
-            result
-        } else if self.col_match(other) && other.is_vector() {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let lhs = self.get((i,j));
-                    let rhs = other.get((0, j));
-                    result.set(lhs / rhs, (i, j))
-                }
-            }
-            result
-        } else if self.row_match(other) && other.cols == 1 {
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.cols {
-                let col = self.get_col(i);
-                for j in 0..self.rows {
-                    let lhs = col.get((0,j));
-                    let rhs = other.get((j, 0));
-                    col.set(lhs / rhs, (0, j));
-                }
-                result.set_col(i, &col)
-            }
-            result
-        } else {
-            panic!("cannot match dividend and divisor")
-        }
-    }
-
-    pub fn negative(&self) {
-        if self.is_vector() {
-            for j in 0..self.cols {
-                let v = self.get((0,j));
-                self.set(-v, (0, j))
-            }
-        } else {
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let v = self.get((i,j));
-                    self.set(-v, (i, j))
-                }
-            }
-        }
-    }
-
-
-
-    fn get_col(&self, col: usize) -> Matrix {
+    fn get_col(&self, col: usize, keepdims: bool) -> Matrix<T> {
         assert!(col < self.cols, "index out of range");
-        let mut vector = Vec::<f64>::with_capacity(self.rows);
-        let mut idx = col;
-        for _ in 0..self.rows {
-            let val = unsafe {
-                self.ptr.add(idx).read()
-            };
-            vector.push(val);
-            idx += self.stride;
+        assert!(!self.is_vector(), "column can only be taken from 2D array, this is a vector");
+        if !keepdims {
+            let mat = Matrix::new((0, self.rows));
+            let mut idx = col;
+            for i in 0..self.rows {
+                let val = unsafe {
+                    self.ptr.add(idx).read()
+                };
+                mat.set(val, (0, i));
+                idx += self.stride;
+            }
+            return mat
+        } else {
+            let mat = Matrix::new((self.rows, 1));
+            let mut idx = col;
+            for i in 0..self.rows {
+                let val = unsafe {
+                    self.ptr.add(idx).read()
+                };
+                mat.set(val, (i, 0));
+                idx += self.stride;
+            }
+            return mat
         }
-        Matrix::from_vec(vector)
     }
 
-    pub fn transpose(&self) {
+    fn set_col(&self, i: usize, col: &Matrix<T>) {
+        if col.is_vector() {
+            assert!(self.rows == col.cols, "rows don't match");
+            self.bound_check_cols(i);
+            for j in 0..self.rows {
+                let v = col.get((0, j));
+                self.set(v, (j, i));
+            }
+        } else {
+            assert!(self.cols == col.cols, "rows don't match");
+            for j in 0..self.rows {
+                let v = col.get((j, 0));
+                self.set(v, (j, i));
+            }
+        }
+    }
+
+
+    pub fn transpose(&mut self) {
         //new matrix
-        //get column of self
-        //set it as row in new matrix
+        let m = Matrix::<T>::new((self.cols, self.rows));
+        for j in 0..self.cols {
+            //get column of self 
+            let col = self.get_col(j, false);
+            //set it as row in new matrix
+            m.set_row(j, &col);
+        }
         //switch self.cols with self.rows
+        let col_copy = self.cols;
+        self.cols = self.rows;
+        self.rows = col_copy;
         //copy new matrix data to self.ptr data
-    }
-
-    pub fn scalar_mul(&self, scalar: f64) {
+        let mem_size = std::mem::size_of::<T>(); 
         unsafe {
-            for i in 0..self.len {
-                let offset = self.ptr.add(i);
-                let mut value = offset.read();
-                value *= scalar;
-                offset.write(value);
-            }
-        }
-    }
-
-
-
-    pub fn scalar_div(&self, scalar: f64) {
-        if scalar == 0.0 {
-            panic!("Division by zero impossible");
-        }
-        unsafe {
-            for i in 0..self.len {
-                let offset = self.ptr.add(i);
-                let mut value = offset.read();
-                value /= scalar;
-                offset.write(value);
-            }
-        }
-    }
-
-    pub fn mmul(&self, other: &Matrix) ->Matrix {
-        if self.can_multipy(&other) {
-            let trg = Matrix::new(self.rows, other.cols);
-            for i in 0..self.rows {
-                let v1 = self.get_row(i);
-                for j in 0..other.cols {
-                    let v2 = other.get_col(j);
-                    let dot = v1.vector_dot(&v2);
-                    trg.set(dot, (i, j));
-                }
-            }
-            trg
-        } else {
-            panic!("M1 cols ({}) don't match rows ({})", self.cols, other.rows)
-        }
-    }
-
-    pub fn vector_dot(&self, other: &Matrix) -> f64 {
-        assert!(self.is_vector() && other.is_vector() && self.cols == other.cols);
-        let mut result: f64 = 0.0;
-        unsafe {
-            for i in 0..self.cols {
-                let v1 = self.ptr.add(i).read();    
-                let v2 = other.ptr.add(i).read();
-                result += v1 * v2;
-            }
-        }
-        result
-    }
-
-    pub fn dot(&self, other: &Matrix) -> Matrix {
-        if !self.is_vector() && !other.is_vector() {
-            //matrix multiplication
-            self.mmul(other)
-        } else {
-            //"normal" dot product
-            assert!(other.is_vector() && self.cols == other.cols, "M1 cols don't match rows ");
-            let result = Matrix::new(0, self.rows);
-            for i in 0..self.rows {
-                let row = self.get_row(i);
-                result.set(row.vector_dot(other), (0, i))
-            }
-            result
-        }
-    }
-
-    pub fn add_vector(&self, other: &Matrix) {
-        assert!(self.cols == other.cols, "cols don't match");
-        assert!(other.is_vector(), "other is not a vector");
-        for i in 0..self.rows {
-            for j in 0..self.cols {
-                let v1 = self.get((i, j));
-                let v2 = other.get((0, j));
-                self.set(v1+v2, (i, j));
-            }
-        }
-        
-    }
-
-    pub fn vector_add(&self, other: &Matrix) -> Matrix {
-        assert!(self.is_vector() && other.is_vector() && self.cols == other.cols);
-        let mut result: Vec<f64> = Vec::with_capacity(self.cols);
-        unsafe {
-            for i in 0..self.cols {
-                let v1 = self.ptr.add(i).read();    
-                let v2 = other.ptr.add(i).read();
-                result.push(v1 + v2);
-            }
-        }
-        Matrix::from_vec(result) 
-    }
-
-    ///axis0
-    ///| | |   |
-    ///| V |   |
-    ///|   |   |
-    
-    ///axis1
-    ///|   |   |
-    ///|->  -> |
-    ///|   |   |
-    
-    pub fn sum(&self) -> f64 {
-        let mut acc = 0.0;
-        unsafe {
-            for i in 0..self.len {
-                acc += self.ptr.add(i).read();    
-            }
+            std::ptr::copy(m.ptr, self.ptr, self.len*mem_size);
         };
-        acc
-    }
 
-    pub fn sum_axis(&self, axis: usize, keepdims: bool) -> Matrix {
-        match axis {
-           0 => {
-                let mut result = Matrix::new(self.cols, 1);
-                for i in 0..self.cols {
-                    let col = self.get_col(i);
-                    result.set(col.sum(), (i, 0));
-                }
-                if keepdims {
-                    result
-                } else {
-                    result.flatten();
-                    result
-                }
-            },
-            1 => {
-                let mut result = Matrix::new(self.rows, 1);
-                for i in 0..self.rows {
-                    let col = self.get_row(i);
-                    result.set(col.sum(), (i, 0));
-                }
-                if keepdims {
-                    result
-                } else {
-                    result.flatten();
-                    result
-                }
-            },
-            _ => {
-                panic!("axis {axis} does not exist on Matrix")
-            }
-        }
-    }
-
-    pub fn max(&self) -> f64 {
-        let mut max = NEG_INFINITY;
-        unsafe {
-            for i in 0..self.len {
-                let v = self.ptr.add(i).read();    
-                if v > max {
-                    max = v
-                }
-            }
-        };
-        if max == NEG_INFINITY {
-            panic!("could not determine max")
-        }
-        max
-    }
-    pub fn max_axis(&self, axis: usize, keepdims: bool) -> Matrix {
-        match axis {
-           0 => {
-                let mut result = Matrix::new(1, self.cols);
-                for i in 0..self.cols {
-                    let col = self.get_col(i);
-                    result.set(col.max(), (0, i));
-                }
-                if keepdims {
-                    result
-                } else {
-                    result.flatten();
-                    result
-                }
-            },
-            1 => {
-                let mut result = Matrix::new(self.rows, 1);
-                for i in 0..self.rows {
-                    let col = self.get_row(i);
-                    result.set(col.max(), (i, 0));
-                }
-                if keepdims {
-                    result
-                } else {
-                    result.flatten();
-                    result
-                }
-            },
-            _ => {
-                panic!("axis {axis} does not exist on Matrix")
-            }
-        }
-    }
-
-
-    pub fn argmax(&self) -> MatIdx {
-        let mut max = NEG_INFINITY;
-        let mut idx: MatIdx = (0, 0);
-        if self.is_vector() {
-            for j in 0..self.cols {
-                let v = self.get((0, j));
-                if v > max {
-                    max = v;
-                    idx = (0, j);
-                }
-            }
-        } else {
-            for i in 0..self.rows {
-                for j in 0..self.cols {
-                    let v = self.get((i, j));
-                    if v > max {
-                        max = v;
-                        idx = (i, j);
-                    }
-                }
-            }
-        }
-        if max == NEG_INFINITY {
-            panic!("could not determine max")
-        }
-        idx
-    }
-
-    pub fn argmax_axis(&self, axis: usize) -> Vec<usize> {
-        match axis {
-           0 => {
-                let mut result: Vec<usize> = vec![];
-                for i in 0..self.cols {
-                    let col = self.get_col(i);
-                    result.push(col.argmax().1);
-                }
-                result
-            },
-            1 => {
-                let mut result: Vec<usize> = vec![];
-                for i in 0..self.rows {
-                    let row = self.get_row(i);
-                    result.push(row.argmax().1)
-                }
-                result
-            },
-            _ => {
-                panic!("axis {axis} does not exist on Matrix")
-            }
-        }
-    }
-
-    pub fn log(&self) -> Matrix {
-        self.for_each_set(|x| x.ln())
-    }
-
-    pub fn neg_log(&self) -> Matrix {
-        self.for_each_set(|x| -(x.ln()))
-    }
-
-    pub fn mean(&self) -> f64 {
-        self.sum() / self.len as f64
-    }
-    pub fn mean_axis(&self,axis: usize, keepdims: bool) -> Matrix {
-        match axis {
-           0 => {
-                let mut result = Matrix::new(0, self.cols);
-                    for i in 0..self.cols {
-                        let col = self.get_col(i);
-                        result.set(col.mean(), (0, i));
-                    }
-                if keepdims {
-                    result
-                } else {
-                    result.flatten();
-                    result
-                }
-            },
-            1 => {
-                let mut result = Matrix::new(self.rows, 1);
-                for i in 0..self.rows {
-                    let col = self.get_row(i);
-                    result.set(col.mean(), (i, 0));
-                }
-                if keepdims {
-                    result
-                } else {
-                    result.flatten();
-                    result
-                }
-            },
-            _ => {
-                panic!("axis {axis} does not exist on Matrix")
-            }
-        }
     }
 
     pub fn flatten(&mut self) {
@@ -791,98 +353,50 @@ impl Matrix {
         self.rows = 0;
         self.stride = 1;
     }
-
-    pub fn maximum_scalar(&self, s: f64) -> Matrix {
-        let result = Matrix::new(self.rows, self.cols);
-        for i in 0..self.rows {
-            let row = self.get_row(i);
-            let maxes = row.vector_scalar_maximum(s);
-            result.set_row(i, &maxes);
-        }
-        result
-    }
-    pub fn maximum(&self, other: &Matrix) -> Matrix {
-        if other.is_vector() {
-            assert!(self.cols == other.cols, "maximum() requires matching number of columns");
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                let row = self.get_row(i);
-                let maxes = row.vector_maximum(other);
-                result.set_row(i, &maxes);
-            }
-            result
-
-        } else {
-            assert!(self.shape_match(other), "maximum() requires shapes to match of both items");
-            let result = Matrix::new(self.rows, self.cols);
-            for i in 0..self.rows {
-                let row_self = self.get_row(i);
-                let row_other = other.get_row(i);
-                let maxes = row_self.vector_maximum(&row_other);
-                result.set_row(i, &maxes);
-            }
-            result
-        }
+    pub fn copy_flat(&self) -> Matrix<T> {
+        let m = Matrix::<T>::new((0, self.len));
+        let mem_size = std::mem::size_of::<T>(); 
+        unsafe {
+            std::ptr::copy(self.ptr, m.ptr, self.len*mem_size);
+        };
+        m
+        
     }
 
-    // scalar compared with each element in vector, returns new matr
-    pub fn vector_scalar_maximum(&self, s: f64) -> Matrix {
-        assert!(self.is_vector(), "vector_scalar_maximum() requires self to be a vector");
-        let result = Matrix::new(0, self.len);
-        for i in 0..self.len {
-            let a = unsafe {self.ptr.add(i).read()};
-            let max = max(a, s);
-            result.set(max, (0, i));
-        }
-        result
-    }
-    // vector with vector returns new vector, with maxes 
-    pub fn vector_maximum(&self, other: &Matrix) -> Matrix {
-        assert!(self.is_vector(), "vector_maximum() requires self to be a vector");
-        assert!(other.is_vector(), "vector_maximum() requires other to be a vector");
-        assert!(self.len == other.len, "vector_maximum() requires self and other to be of the same length");
-        let result = Matrix::new(0, self.len);
-        for i in 0..self.len {
-            let a = unsafe {self.ptr.add(i).read()};
-            let b = unsafe {other.ptr.add(i).read()};
-            let max = max(a, b);
-            result.set(max, (0,i));
-        }
-        result
-    }
-
-    pub fn exp(&self) -> Matrix {
-        self.for_each_set(|x| {E.powf(x)})
-    }
-
-    pub fn all<F>(&self, f: F) -> bool 
-    where 
-        F: Fn(f64) -> bool  
+    pub fn each<F>(&self, f: F) 
+    where
+        F: Fn(T) -> T
     {
-        for i in 0..self.rows {
+        if self.is_vector() {
             for j in 0..self.cols {
-                let v = self.get((i,j));
-                if !f(v) {
-                    println!("received 'false' for '{v}'");
-                    return false;
+                let v = self.get((0,j));
+                let adjusted = f(v);
+                self.set(adjusted, (0,j))
+            }
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let v = self.get((i,j));
+                    let adjusted = f(v);
+                    self.set(adjusted, (i,j))
                 }
             }
         }
-        true
-
     }
 
-    pub fn for_each_set<F>(&self, f: F) -> Matrix 
-    where 
-        F: Fn(f64) -> f64  
+
+    pub fn map<F>(&self, f: F) -> Matrix<T>
+    where
+        F: Fn(T) -> T
     {
-        let result = Matrix::new(self.rows, self.cols);
+        let result = Matrix::like(self);
         if self.is_vector() {
             for j in 0..self.cols {
                 let v = self.get((0,j));
                 let adjusted = f(v);
                 result.set(adjusted, (0,j))
             }
+            result
         } else {
             for i in 0..self.rows {
                 for j in 0..self.cols {
@@ -891,11 +405,35 @@ impl Matrix {
                     result.set(adjusted, (i,j))
                 }
             }
+            result
         }
-        result
-    } 
+    }
 
-    pub fn clip(&self, low: f64, high: f64) {
+    pub fn every<F>(&self, f: F) -> bool 
+    where 
+        F: Fn(T) -> bool
+    {
+        if self.is_vector() {
+            for j in 0..self.cols {
+                let v = self.get((0, j));
+                if !f(v) {
+                    return false
+                }
+            }
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let v = self.get((i, j));
+                    if !f(v) {
+                        return false
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    pub fn clip(&self, low: T, high: T) {
         if self.is_vector() {
             for j in 0..self.cols {
                 let v = self.get((0,j));
@@ -921,34 +459,218 @@ impl Matrix {
         }
     }
 
-    ///only on vector
-    pub fn index_slicing(&self, range: Range<usize>, src: Matrix) -> Matrix {
-        assert!(src.is_vector(), "index_slicing is only implemented for vectors");
-        let vector = Matrix::new(0, range.end);
-        for i in range {
-            let idx = src.get((0, i));
-            let v = self.get((i, idx as usize));
-            vector.set(v, (0, i));
+    pub fn max(&self) -> T {
+        let mut max = T::default();
+        unsafe {
+            for i in 0..self.len {
+                let v = self.ptr.add(i).read();    
+                if i == 0 {
+                    max = v
+                } else if v > max {
+                    max = v
+                }
+            }
+        };
+        max
+    }
+
+    pub fn max_axis(&self, axis: usize, keepdims: bool) -> Matrix<T> {
+        match axis {
+           0 => {
+                let mut result = Matrix::new((1, self.cols));
+                for i in 0..self.cols {
+                    let col = self.get_col(i, false);
+                    result.set(col.max(), (0, i));
+                }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            1 => {
+                let mut result = Matrix::new((self.rows, 1));
+                for i in 0..self.rows {
+                    let col = self.get_row(i);
+                    result.set(col.max(), (i, 0));
+                }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            _ => {
+                panic!("axis {axis} does not exist on Matrix")
+            }
         }
-        vector
+    }
+
+    pub fn argmax(&self) -> MatIdx {
+        let mut max = T::default();
+        let mut idx: MatIdx = (0, 0);
+        if self.is_vector() {
+            for j in 0..self.cols {
+                let v = self.get((0, j));
+                if j == 0 {
+                    max = v;
+                    idx = (0, j);
+                } else if v > max {
+                    max = v;
+                    idx = (0, j);
+                }
+            }
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let v = self.get((i, j));
+                    if i == 0 && j == 0 {
+                        max = v;
+                        idx = (i, j);
+                    } else if v > max {
+                        max = v;
+                        idx = (i, j);
+                    }
+                }
+            }
+        }
+        idx
+    }
+
+    pub fn argmax_axis(&self, axis: usize) -> Matrix<i32> {
+        match axis {
+           0 => {
+                let mut result: Vec<i32> = vec![];
+                for i in 0..self.cols {
+                    let col = self.get_col(i, false);
+                    result.push(col.argmax().1 as i32);
+                }
+                Matrix::from_vec(result)
+            },
+            1 => {
+                let mut result: Vec<i32> = vec![];
+                for i in 0..self.rows {
+                    let row = self.get_row(i);
+                    result.push(row.argmax().1 as i32)
+                }
+                Matrix::from_vec(result)
+            },
+            _ => {
+                panic!("axis {axis} does not exist on Matrix")
+            }
+        }
     } 
 
-    pub fn is_vector(&self) -> bool {
-        self.rows == 0  
-    }
-    fn can_multipy(&self, other: &Matrix) -> bool {
-        self.cols == other.rows
-    }
-    fn shape_match(&self, other: &Matrix) -> bool {
-        self.cols == other.cols && self.rows == other.rows
-    }
-    fn col_match(&self, other: &Matrix) -> bool {
-        self.cols == other.cols
-    }
-    fn row_match(&self, other: &Matrix) -> bool {
-        self.rows == other.rows
+    pub fn sum(&self) -> T {
+        let mut acc = T::default();
+        unsafe {
+            for i in 0..self.len {
+                acc += self.ptr.add(i).read();    
+            }
+        };
+        acc
     }
 
+    pub fn sum_axis(&self, axis: usize, keepdims: bool) -> Matrix<T> {
+        match axis {
+           0 => {
+                let mut result = Matrix::new((1, self.cols));
+                for i in 0..self.cols {
+                    let col = self.get_col(i, false);
+                    result.set(col.sum(), (0, i));
+                }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            1 => {
+                let mut result = Matrix::new((self.rows, 1));
+                for i in 0..self.rows {
+                    let col = self.get_row(i);
+                    result.set(col.sum(), (i,0));
+                }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            _ => {
+                panic!("axis {axis} does not exist on Matrix")
+            }
+        }
+    }
+
+    pub fn v_dot(&self, other: &Matrix<T>) -> T {
+        assert!(self.is_vector(), "'self' needs to be a vector (0, 1)");
+        assert!(other.is_vector(), "'other' needs to be a vector (0, 1)");
+        assert!(self.len == other.len, "both vectors need to have the same length");
+        let mut acc = T::default();
+        for i in 0..self.cols {
+            let v1: T = self.get((0, i));
+            let v2: T = other.get((0, i));
+            acc += v1 * v2;
+        }
+        acc
+    }
+    
+    
+    pub fn mat_mul(&self, other: &Matrix<T>) -> Matrix<T> {
+        if let Some(shape) = self.prepare_mat_mul(other) {
+            let trg = Matrix::<T>::new(shape);
+            for i in 0..self.rows {
+                let v1 = self.get_row(i);
+                for j in 0..other.cols {
+                    let v2 = other.get_col(j, false);
+                    let dot = v1.v_dot(&v2);
+                    trg.set(dot, (i,j));
+                }
+            }
+            trg
+        } else {
+            panic!("M1 cols ({}) don't match rows ({})", self.cols, other.rows)
+        }
+    }
+    
+    pub fn dot(&self, other: &Matrix<T>) -> Matrix<T> {
+        if !self.is_vector() && !other.is_vector() {
+            self.mat_mul(other)
+        } else {
+            assert!(other.is_vector(), "'other' needs to be a vector");
+            assert!(self.cols == other.cols, "'self' cols don't match 'other' rows");
+            let result = Matrix::new((0, self.rows));
+            for i in 0..self.rows {
+                let row = self.get_row(i);
+                result.set(row.v_dot(other), (0, i))
+            }
+            result
+        }
+    }
+    
+    fn prepare_mat_mul(&self, other: &Matrix<T>) -> Option<MatIdx> {
+        if self.cols == other.rows {
+            Some((self.rows, other.cols))
+        } else {
+            None
+        }
+    }
+    
+    fn shape_match(&self, other: &Matrix<T>) -> bool {
+        self.cols == other.cols && self.rows == other.rows
+    }
+    fn col_match(&self, other: &Matrix<T>) -> bool {
+        self.cols == other.cols
+    }
+    fn row_match(&self, other: &Matrix<T>) -> bool {
+        self.rows == other.rows
+    }
+    
     fn bound_check_cols(&self, i: usize) {
         if i >= self.cols {
             let cols = self.cols;
@@ -961,305 +683,576 @@ impl Matrix {
             panic!("row index out of range [{i} >= {rows}]");
         }
     }
-    
 }
 
+impl Matrix<f64> {
+    pub fn ln(&self) {
+        self.each(|x| x.ln())
+    }
 
+    pub fn ln_copy(&self) -> Matrix<f64> {
+        let m = self.clone();
+        m.ln();
+        m
+    }
 
+    pub fn neg_ln(&self) {
+        self.each(|x| -x.ln())
+    }
 
-fn max<T: PartialOrd>(a: T, b: T) -> T {
-    if a >= b {
-        a
-    } else {
-        b
+    pub fn neg_ln_copy(&self) -> Matrix<f64> {
+        let m = self.clone();
+        m.neg_ln();
+        m
+    }
+
+    pub fn exp(&self) {
+        self.each(|x| E.powf(x))
+    }
+
+    pub fn exp_copy(&self) -> Matrix<f64> {
+        let m = self.clone();
+        m.exp();
+        m
+    }
+
+    pub fn mean(&self) -> f64 {
+        self.sum() / self.len as f64
+    }
+    
+    pub fn mean_axis(&self, axis: usize, keepdims: bool) -> Matrix<f64> {
+        match axis {
+           0 => {
+                let mut result = Matrix::new((1, self.cols));
+                    for i in 0..self.cols {
+                        let col = self.get_col(i, false);
+                        result.set(col.mean(), (0, i));
+                    }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            1 => {
+                let mut result = Matrix::new((self.rows, 1));
+                for i in 0..self.rows {
+                    let col = self.get_row(i);
+                    result.set(col.mean(), (i, 0));
+                }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            _ => {
+                panic!("axis {axis} does not exist on Matrix")
+            }
+        }
     }
 }
 
+impl Matrix<i32> {
+pub fn mean(&self) -> f64 {
+    f64::from(self.sum()) / self.len as f64
+}
+
+pub fn mean_axis(&self, axis: usize, keepdims: bool) -> Matrix<f64> {
+    match axis {
+       0 => {
+            let mut result = Matrix::new((1, self.cols));
+                for i in 0..self.cols {
+                    let col = self.get_col(i, false);
+                    result.set(col.mean(), (0, i));
+                }
+            if keepdims {
+                result
+            } else {
+                result.flatten();
+                result
+            }
+        },
+        1 => {
+            let mut result = Matrix::new((self.rows, 1));
+            for i in 0..self.rows {
+                let col = self.get_row(i);
+                result.set(col.mean(), (i, 0));
+            }
+            if keepdims {
+                result
+            } else {
+                result.flatten();
+                result
+            }
+        },
+        _ => {
+            panic!("axis {axis} does not exist on Matrix")
+        }
+    }
+}
+}
+
+impl<T: Add + AddAssign + Sub  + Mul + Div + Neg + Copy + SampleUniform + PartialEq + PartialOrd + Default + Mul<Output = T>>  Matrix<T> {
+pub fn random(shape: MatIdx,  range: Range<T>) -> Self {
+    let matrix = Self::zeroed(shape);
+    let mut rng = rand::thread_rng();
+    unsafe {
+        for i in 0..matrix.len {
+            let r: T = rng.gen_range(range.clone());
+            matrix.ptr.add(i).write(r);
+        }
+    }
+    matrix
+}
+}
 
 
 
 
+fn max<T: PartialOrd + PartialOrd>(a: T, b: T) -> T {
+if a >= b {
+    a
+} else {
+    b
+}
+}
+
+
+
+impl<T: Sub<Output = T> + fmt::Display + fmt::Debug + Default + Copy + Add + AddAssign + Mul + Div + Neg + PartialEq + PartialOrd + Default + Mul<Output = T>> Sub for Matrix<T> {
+
+type Output = Matrix<T>;
+
+fn sub(self, rhs: Self) -> Matrix<T> {
+    if self.shape_match(&rhs) {
+        let result = Self::new((self.rows, self.cols));
+        for i in 0..self.rows {
+            for j in 0..self.cols {
+                let left = self.get((i,j));
+                let right = rhs.get((i, j));
+                result.set(left - right, (i, j))
+            }
+        }
+        result
+    } else if self.col_match(&rhs) && rhs.is_vector() {
+        let result = Self::new((self.rows, self.cols));
+        for i in 0..self.rows {
+            for j in 0..self.cols {
+                let left = self.get((i,j));
+                let right = rhs.get((0, j));
+                result.set(left - right, (i, j))
+            }
+        }
+        result
+    } else if self.row_match(&rhs) && rhs.cols == 1 {
+        let result = Self::new((self.rows, self.cols));
+        for i in 0..self.cols {
+            let col = self.get_col(i, false);
+            for j in 0..self.rows {
+                let left = col.get((0,j));
+                let right = rhs.get((j, 0));
+                col.set(left - right, (0, j));
+            }
+            result.set_col(i, &col)
+        }
+        result
+    } else {
+        panic!("cannot match minuend and subtrahend")
+    }
+}
+
+}
+
+
+
+impl<T: Add<Output = T> + fmt::Display + fmt::Debug + Default + Copy + AddAssign + Sub + Mul + Div + Neg + PartialEq + PartialOrd + Default + Mul<Output = T>> Add for Matrix<T> {
+type Output = Self;
+fn add(self, rhs: Self) -> Self::Output {
+    if self.shape_match(&rhs) {
+        let result = Matrix::new((self.rows, self.cols));
+        for i in 0..self.rows {
+            for j in 0..self.cols {
+                let left = self.get((i,j));
+                let right = rhs.get((i, j));
+                result.set(left + right, (i, j))
+            }
+        }
+        result
+    } else if self.col_match(&rhs) && rhs.is_vector() {
+        let result = Matrix::new((self.rows, self.cols));
+        for i in 0..self.rows {
+            for j in 0..self.cols {
+                let left = self.get((i,j));
+                let right = rhs.get((0, j));
+                result.set(left + right, (i, j))
+            }
+        }
+        result
+    } else if self.row_match(&rhs) && rhs.cols == 1 {
+        let result = Matrix::new((self.rows, self.cols));
+        for i in 0..self.cols {
+            let col = self.get_col(i, false);
+            for j in 0..self.rows {
+                let left = col.get((0,j));
+                let right = rhs.get((j, 0));
+                col.set(left + right, (0, j));
+            }
+            result.set_col(i, &col)
+        }
+        result
+    } else {
+        panic!("cannot match addends")
+    }
+}
+} 
+
+impl<T> Mul<Matrix<T>> for Matrix<T> 
+    where
+        T: Mul<Output = T> + fmt::Display + fmt::Debug + Default + Copy + Add + AddAssign + Sub + Div + Neg + PartialEq + PartialOrd + Default 
+{
+    type Output = Matrix<T>;
+    fn mul(self, rhs: Self) -> Matrix<T> {
+        if self.shape_match(&rhs) {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let left = self.get((i,j));
+                    let right = rhs.get((i, j));
+                    result.set(left * right, (i, j))
+                }
+            }
+            result
+        } else if self.col_match(&rhs) && rhs.is_vector() {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let left = self.get((i,j));
+                    let right = rhs.get((0, j));
+                    result.set(left * right, (i, j))
+                }
+            }
+            result
+        } else if self.row_match(&rhs) && rhs.cols == 1 {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.cols {
+                let col = self.get_col(i, false);
+                for j in 0..self.rows {
+                    let left = col.get((0,j));
+                    let right = rhs.get((j, 0));
+                    col.set(left * right, (0, j));
+                }
+                result.set_col(i, &col)
+            }
+            result
+        } else {
+            panic!("cannot match addends")
+        }
+    }
+}
+
+impl<T: Div<Output = T> + fmt::Display + fmt::Debug + Default + Copy + Add + AddAssign + Sub + Mul + Neg + PartialEq + PartialOrd + Default + Mul<Output = T>> Div for Matrix<T> {
+    type Output = Self;
+    fn div(self, rhs: Self) -> Self::Output {
+        if self.shape_match(&rhs) {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let left = self.get((i,j));
+                    let right = rhs.get((i, j));
+                    result.set(left / right, (i, j))
+                }
+            }
+            result
+        } else if self.col_match(&rhs) && rhs.is_vector() {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let left = self.get((i,j));
+                    let right = rhs.get((0, j));
+                    result.set(left / right, (i, j))
+                }
+            }
+            result
+        } else if self.row_match(&rhs) && rhs.cols == 1 {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.cols {
+                let col = self.get_col(i, false);
+                for j in 0..self.rows {
+                    let left = col.get((0,j));
+                    let right = rhs.get((j, 0));
+                    col.set(left / right, (0, j));
+                }
+                result.set_col(i, &col)
+            }
+            result
+        } else {
+            panic!("cannot match addends")
+        }
+    }
+} 
+
+
+impl<T: Neg<Output = T> + fmt::Display + fmt::Debug + Default + Copy + Add + AddAssign + Sub + Mul + Div + PartialEq + PartialOrd + Default + Mul<Output =T>> Neg for Matrix<T> {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        if self.is_vector() {
+            for j in 0..self.cols {
+                let v = self.get((0,j));
+                self.set(-v, (0, j));
+            }
+            self
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let v = self.get((i,j));
+                    self.set(-v, (i, j));
+                }
+            }
+            self
+        }
+    }
+} 
+ 
+ 
+ 
 #[cfg(test)]
 mod test {
     use super::*;
-
+  
     #[test]
-    fn la_matrix_struct() {
-        let mat_1 = Matrix::zeroed(2, 2);
-        assert_eq!(mat_1.get((0,0)), 0.0);
-        assert_eq!(mat_dump!(mat_1), "[\n\t[ 0 0 ]\n\t[ 0 0 ]\n]\n");
-        let mat_2 = Matrix::random(2, 2, -0.1..0.1);
-        let val1 = mat_2.get((0,0));
-        let val2 = mat_2.get((1,1));
-        assert!(val1 > -1.0 && val1 < 1.0);
-        assert!(val2 > -1.0 && val1 < 1.0);
-        let v1 = vec![1.0,2.0,3.0,4.0,5.0,6.0];
-        let v2 = vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]];
-        let mat_3 = Matrix::from_vec(v1.clone());
-        let mat_4 = Matrix::from_vec2(v2.clone());
-        assert_eq!(mat_3.cols, v1.len());
-        assert_eq!(mat_3.get((0,1)), 2.0);
-        assert_eq!(mat_4.rows, v2.len());
-        assert_eq!(mat_4.cols, v2[0].len());
-        assert_eq!(mat_4.get((1,1)), 4.0);
-        let mat_5 = mat!(2,2);
-        let mat_6 = mat!(2,2);
-        assert_eq!(mat_5, mat_6);
-        let mat_7 = Matrix::from_vec(vec![3.0, 4.0]);
-        assert_eq!(mat_4.get_row(1), mat_7);
-        let mat_8 = Matrix::from_vec2(v2);
-        let col = Matrix::from_vec(vec![2.0, 4.0, 6.0]);
-        assert_eq!(mat_8.get_col(1), col);
+    fn la_matrix_creation() {
+        Matrix::<f32>::new((2,2));
+        Matrix::<i32>::new((2,2));
+        Matrix::<f32>::zeroed((2,2));
+        let mat = Matrix::<i32>::zeroed((2, 3));
+        assert_eq!(mat.shape(), (2,3));
+        let mat = Matrix::<i32>::from_vec(vec![1,2,3]);
+        assert_eq!(mat.shape(), (0, 3));
+        assert!(mat.is_vector());
+        let mat = Matrix::<i32>::from_vec2(vec![vec![1,1], vec![1,1]]);
+        assert_eq!(mat.shape(), (2,2));
+        let liked = Matrix::like_with(&mat, 2);
+        let liked_r = Matrix::from_vec2(vec![vec![2,2], vec![2,2]]);
+        assert_eq!(liked, liked_r);
+        let int_rand = Matrix::<i32>::random((4,5), -1..1);
+        let float_rand = Matrix::<f32>::random((4,5), -1.0..1.0);
+        let r1 = int_rand.get((1,1));
+        assert!(r1 >= -1 && r1 < 1);
+        let r2 = float_rand.get((2,3));
+        assert!(r2 > -1.0 && r2 < 1.0);
     }
 
     #[test]
-    fn la_matrix_set() {
-        let mat = mat!(4,3);
-        assert_eq!(mat.get((1,1)), 0.0);
-        mat.set(4.0, (1,1));
-        assert_eq!(mat.get((1,1)), 4.0);
-        let row = Matrix::from_vec(vec![1.0, 2.0, 3.0]);
-        mat.set_row(3, &row);
-        assert_eq!(mat.get_row(3), row);
-        let col = Matrix::from_vec(vec![2.0, 3.0]);
-        let mat1 = Matrix::zeroed(2, 3);
-        let exp = Matrix::from_vec2(vec![vec![0.0, 2.0, 0.0], vec![0.0, 3.0, 0.0]]);
-        mat1.set_col(1, &col);
-        assert_eq!(exp, mat1);
+    fn la_matrix_get_set() {
+        let mat = Matrix::<f32>::zeroed((2,1));
+        mat.set(1.0, (1,0));
+        assert_eq!(mat.get((1,0)), 1.0);
+        assert_eq!(mat.get((0,0)), 0.0);
+        let mat = Matrix::<i32>::zeroed((4,5));
+        let row = Matrix::<i32>::from_vec(vec![1,2,3,4,5]);
+        mat.set_row(2, &row);
+        assert_eq!(mat.get_row(2), row);
+        let col = Matrix::<i32>::from_vec(vec![1,2,3,4]);
+        mat.set_col(2, &col);
+        assert_eq!(mat.get_col(2, false), col);
+        assert_eq!(mat.get((2,2)), 3);
+        let with_dims = Matrix::<i32>::from_vec2(vec![vec![1],vec![2],vec![3],vec![4]]);
+        assert_eq!(mat.get_col(2, true), with_dims);
     }
 
     #[test]
-    fn la_matrix_scalar_mul() {
-        let v1 = vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]];
-        let mat1 = Matrix::from_vec2(v1);
-        let v2 = vec![vec![2.0, 4.0], vec![6.0, 8.0], vec![10.0, 12.0]];
-        let mat2 = Matrix::from_vec2(v2);
-        mat1.scalar_mul(2.0);
-        assert_eq!(mat1, mat2);
-    }
-
-    #[test]
-    fn la_matrix_scalar_div() {
-        let v1 = vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]];
-        let v2 = vec![vec![2.0, 4.0], vec![6.0, 8.0], vec![10.0, 12.0]];
-        let mat1 = Matrix::from_vec2(v1);
-        let mat2 = Matrix::from_vec2(v2);
-        mat2.scalar_div(2.0);
-        assert_eq!(mat1, mat2)
-    }
-
-    #[test]
-    fn la_matrix_mul_dot() {
-        let m1 = Matrix::from_vec2(vec![vec![1.0,2.0,3.0], vec![4.0,5.0,6.0]]);
-        let m2 = Matrix::from_vec2(vec![vec![7.0, 8.0], vec![9.0, 10.0], vec![11.0,12.0]]);
-        let result = Matrix::from_vec2(vec![vec![58.0, 64.0], vec![139.0, 154.0]]);
-        assert_eq!(m1.mmul(&m2), result);
-        let mat_4 = Matrix::from_vec2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-        let v1 = Matrix::from_vec(vec![5.0, 6.0]);
-        let exptected = Matrix::from_vec(vec![17.0, 39.0]);
-        assert_eq!(mat_4.dot(&v1), exptected);
-    }
-
-    #[test]
-    fn la_matrix_sums() {
-        let mat = Matrix::from_vec2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-        assert_eq!(mat.sum(), 10.0);
-
-        let mat1 = Matrix::from_vec2(vec![vec![0.0,1.0], vec![0.0, 5.0]]);
-        let exp = Matrix::from_vec2(vec![vec![0.0], vec![6.0]]);
-        let res = mat1.sum_axis(0, true);
-        assert_eq!(res, exp);
-        let exp_flat = Matrix::from_vec(vec![0.0, 6.0]);
-        let res = mat1.sum_axis(0, false);
-        assert_eq!(res, exp_flat);
-        
-        let exp2 = Matrix::from_vec2(vec![vec![1.0], vec![5.0]]);
-        let res1 = mat1.sum_axis(1, true);
-        assert_eq!(res1, exp2);
-
-        let exp_flat = Matrix::from_vec(vec![1.0, 5.0]);
-        let res = mat1.sum_axis(1, false);
-        assert_eq!(res, exp_flat);
-        
-    }
-
-    #[test]
-    fn la_matrix_max() {
-        let mat = Matrix::from_vec2(vec![vec![0.0,1.0], vec![2.0,3.0]]);
-        let max = mat.max();
-        let exp = 3.0;
-        assert_eq!(exp, max);
-
-        let max_0 = mat.max_axis(0, true);
-        let exp_0 = Matrix::from_vec2(vec![vec![2.0, 3.0]]);
-        assert_eq!(exp_0, max_0);
-
-        let max_1 = mat.max_axis(1, true);
-        let exp_1 = Matrix::from_vec2(vec![vec![1.0], vec![3.0]]);
-        assert_eq!(exp_1, max_1);
-
-    }
-
-    #[test]
-    fn la_matrix_argmax() {
-        let mat = Matrix::from_vec2(vec![vec![10.0,11.0], vec![12.0,13.0]]);
-        let max = mat.argmax();
-        let exp: MatIdx = (1,1);
-        assert_eq!(exp, max);
-
-        let max_0 = mat.argmax_axis(0);
-        let exp_0: Vec<usize> = vec![1, 1];
-        assert_eq!(exp_0, max_0);
-
-        let max_1 = mat.argmax_axis(1);
-        let exp_1: Vec<usize> = vec![1,1];
-        assert_eq!(exp_1, max_1);
-    }
-
-    #[test]
-    fn la_matrix_mean() {
-        let mat = Matrix::from_vec2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-        let exp_all = 2.5;
-        let exp_0 = Matrix::from_vec(vec![2.0, 3.0]);
-        let exp_1 = Matrix::from_vec(vec![1.5, 3.5]);
-        assert_eq!(mat.mean(), exp_all);
-        assert_eq!(mat.mean_axis(0, false), exp_0);
-        assert_eq!(mat.mean_axis(1, false), exp_1);
-    }
-
-    #[test]
-    fn la_matrix_maximum() {
-        let mat5 = Matrix::from_vec2(vec![vec![-1.0, 0.0, 1.0], vec![-0.5, 0.1, 0.5]]);
-        let mat6 = Matrix::from_vec2(vec![vec![-0.9, 0.001, 0.9], vec![-0.4, 0.01, 0.49]]);
-        let vec_5 = Matrix::from_vec(vec![-0.5, 0.1, 0.9]);
-        let res_5 = Matrix::from_vec2(vec![vec![0.0, 0.0, 1.0], vec![0.0, 0.1, 0.5]]);
-        let res_6 = Matrix::from_vec2(vec![vec![-0.9, 0.001, 1.0], vec![-0.4, 0.1, 0.5]]);
-        let res_7 = Matrix::from_vec2(vec![vec![-0.5, 0.1, 1.0], vec![-0.5, 0.1, 0.9]]);
-        assert_eq!(mat5.maximum_scalar(0.0), res_5);
-        assert_eq!(mat5.maximum(&mat6), res_6);
-        assert_eq!(mat5.maximum(&vec_5), res_7);
-    }   
-
-    #[test]
-    fn la_matrix_subtract() {
-        let mat = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0], vec![6.0, 7.0, 8.0]]);
-        let row = Matrix::from_vec(vec![0.0, 1.0, 2.0]);
-        let exp_row = Matrix::from_vec2(vec![vec![0.0, 0.0, 0.0], vec![3.0, 3.0, 3.0], vec![6.0, 6.0, 6.0]]);
-        let res_row = mat.subtract(&row);
-        assert_eq!(exp_row, res_row);
-        let col = Matrix::from_vec2(vec![vec![0.0], vec![1.0], vec![2.0]]);
-        let exp_col = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![2.0, 3.0, 4.0], vec![4.0, 5.0, 6.0]]);
-        let res_col = mat.clone() - col;
-        assert_eq!(exp_col, res_col);
-        let mat2 = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0], vec![6.0, 7.0, 8.0]]);
-        let exp_mat2 = Matrix::zeroed(3,3); 
-        let res_mat2 = mat.clone() - mat2;
-        assert_eq!(exp_mat2, res_mat2);
+    fn la_matrix_subtraction() {
+        let sub = vec![1,2,3,4];
+        let mat1 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let mat2 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let res = Matrix::<i32>::zeroed((3,4));
+        assert_eq!(mat1.clone() - mat2, res);
+        let row_match = Matrix::<i32>::from_vec(vec![1,1,1,1]);
+        let res = vec![0,1,2,3];
+        let row_result = Matrix::<i32>::from_vec2(vec![res.clone(), res.clone(), res.clone()]);
+        assert_eq!(mat1.clone() - row_match, row_result);
+        let col_match = Matrix::<i32>::from_vec2(vec![vec![1],vec![2],vec![3]]);
+        let col_result = Matrix::<i32>::from_vec2(vec![res, vec![-1, 0, 1, 2], vec![-2, -1, 0, 1]]);
+        assert_eq!(mat1.clone()-col_match, col_result);
     }
 
     #[test]
     fn la_matrix_addition() {
-        let mat = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0], vec![6.0, 7.0, 8.0]]);
-        let row = Matrix::from_vec(vec![0.0, 1.0, 2.0]);
-        let exp_row = Matrix::from_vec2(vec![vec![0.0, 2.0, 4.0], vec![3.0, 5.0, 7.0], vec![6.0, 8.0, 10.0]]);
-        let res_row = mat.clone().addition(&row);
-        assert_eq!(exp_row, res_row);
-        let col = Matrix::from_vec2(vec![vec![0.0], vec![1.0], vec![2.0]]);
-        let exp_col = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![4.0, 5.0, 6.0], vec![8.0, 9.0, 10.0]]);
-        let res_col = mat.clone() + col;
-        assert_eq!(exp_col, res_col);
-        let mat2 = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0], vec![6.0, 7.0, 8.0]]);
-        let exp_mat2 = Matrix::from_vec2(vec![vec![0.0, 2.0, 4.0], vec![6.0, 8.0, 10.0], vec![12.0, 14.0, 16.0]]); 
-        let res_mat2 = mat.clone() + mat2;
-        assert_eq!(exp_mat2, res_mat2);
+        let sub = vec![1,2,3,4];
+        let mat1 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let mat2 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub]);
+        let res0 = vec![2,4,6,8];
+        let mat3 = Matrix::<i32>::from_vec2(vec![res0.clone(),res0.clone(),res0.clone()]);
+        assert_eq!(mat1.clone() + mat2, mat3);
+        let row_match = Matrix::<i32>::from_vec(vec![1,1,1,1]);
+        let res = vec![2,3,4,5];
+        let row_result = Matrix::<i32>::from_vec2(vec![res.clone(), res.clone(), res.clone()]);
+        assert_eq!(mat1.clone() + row_match, row_result);
+        let col_match = Matrix::<i32>::from_vec2(vec![vec![1],vec![2],vec![3]]);
+        let col_result = Matrix::<i32>::from_vec2(vec![res, vec![3,4,5,6], vec![4,5,6,7]]);
+        assert_eq!(mat1.clone()+col_match, col_result);
     }
 
     #[test]
     fn la_matrix_multiplication() {
-        let mat = Matrix::from_vec2(vec![vec![0.0, 1.0, 2.0], vec![3.0, 4.0, 5.0], vec![6.0, 7.0, 8.0]]);
-        let row = Matrix::from_vec(vec![0.0, 1.0, 2.0]);
-        let exp_row = Matrix::from_vec2(vec![vec![0.0, 1.0, 4.0], vec![0.0, 4.0, 10.0], vec![0.0, 7.0, 16.0]]);
-        let res_row = mat * row;
-        assert_eq!(exp_row, res_row);
+        let sub = vec![1,2,3,4];
+        let mat1 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let mat2 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let res0 = vec![1,4,9,16];
+        let mat3 = Matrix::<i32>::from_vec2(vec![res0.clone(),res0.clone(),res0.clone()]);
+        assert_eq!(mat1.clone() * mat2, mat3);
+        let row_match = Matrix::<i32>::from_vec(vec![2,2,2,2]);
+        let res = vec![2,4,6,8];
+        let row_result = Matrix::<i32>::from_vec2(vec![res.clone(), res.clone(), res.clone()]);
+        assert_eq!(mat1.clone() * row_match, row_result);
+        assert_eq!(mat1.clone() * Matrix::like_with(&mat1, 2), row_result);
+        let col_match = Matrix::<i32>::from_vec2(vec![vec![1],vec![2],vec![3]]);
+        let col_result = Matrix::<i32>::from_vec2(vec![sub, res, vec![3,6,9,12]]);
+        assert_eq!(mat1.clone() * col_match, col_result);
     }
+
 
     #[test]
     fn la_matrix_division() {
-        let mat = Matrix::from_vec2(vec![vec![3.0, 4.0, 5.0], vec![6.0, 8.0, 10.0]]);
-        let col = Matrix::from_vec2(vec![vec![1.0], vec![2.0]]);
-        let exp_col = Matrix::from_vec2(vec![vec![3.0, 4.0, 5.0], vec![3.0, 4.0, 5.0]]);
-        let res_col = mat / col;
-        assert_eq!(exp_col, res_col);
+        let sub = vec![2,4,6,8];
+        let mat1 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let mat2 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let res0 = vec![1,1,1,1];
+        let mat3 = Matrix::<i32>::from_vec2(vec![res0.clone(),res0.clone(),res0.clone()]);
+        assert_eq!(mat1.clone() / mat2, mat3);
+        let row_match = Matrix::<i32>::from_vec(vec![2,2,2,2]);
+        let res = vec![1,2,3,4];
+        let row_result = Matrix::<i32>::from_vec2(vec![res.clone(), res.clone(), res.clone()]);
+        assert_eq!(mat1.clone() / row_match, row_result);
+        let col_match = Matrix::<i32>::from_vec2(vec![vec![1],vec![2],vec![2]]);
+        let col_result = Matrix::<i32>::from_vec2(vec![sub, res.clone(), res]);
+        assert_eq!(mat1.clone() / col_match, col_result);
     }
 
     #[test]
-    fn la_matrix_for_each() {
-        let mat5 = Matrix::from_vec2(vec![vec![-1.0, 0.0, 1.0], vec![-0.5, 0.1, 0.5]]);
-        let res_8 = mat5.for_each_set(|x| {if x >= 0.0 {return x} else {
-            return 0.01*x
-        }});
-        let exp_8 = Matrix::from_vec2(vec![vec![-0.01, 0.0, 1.0], vec![-0.005, 0.1, 0.5]]);
-        assert_eq!(res_8, exp_8);
+    fn la_matrix_negative() {
+        let sub = vec![2,3,4,5];
+        let mat1 = Matrix::<i32>::from_vec2(vec![sub.clone(), sub.clone(), sub.clone()]);
+        let res = vec![-2, -3, -4, -5];
+        let mat2 = Matrix::<i32>::from_vec2(vec![res.clone(), res.clone(), res.clone()]);
+        assert_eq!(-mat1, mat2);
+        let v = Matrix::from_vec(res);
+        let v_res = Matrix::<i32>::from_vec(sub);
+        assert_eq!(-v, v_res);
     }
 
+    #[test]
+    fn la_matrix_transpose() {
+        let mut m = Matrix::from_vec2(vec![vec![1,2], vec![3,4], vec![5,6]]);
+        let exp = Matrix::from_vec2(vec![vec![1,3,5], vec![2,4,6]]);
+        m.transpose();
+        assert_eq!(m, exp);
+    }
 
     #[test]
-    fn la_matrix_exponent() {
-        let mat_exp = Matrix::from_vec2(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
-        let exp_exp = Matrix::from_vec2(vec![
- 	vec![2.718281828459045, 7.3890560989306495 ],
-	vec![20.085536923187664, 54.59815003314423 ]
-        ]);
-        let res = mat_exp.exp();
-        assert_eq!(res, exp_exp);
+    fn la_matrix_flatten() {
+        let mut m = Matrix::from_vec2(vec![vec![1,2], vec![3,4]]);
+        let r = Matrix::from_vec(vec![1,2,3,4]);
+        assert_eq!(m.copy_flat(), r);
+        m.flatten();
+        assert_eq!(m, r);
+    }
+
+    #[test]
+    fn la_matrix_every() {
+        let mut m = Matrix::from_vec2(vec![vec![1,2], vec![3,4]]);
+        assert!(m.every(|x| x > 0));
+        assert!(!m.every(|x| x < 4));
     }
 
     #[test]
     fn la_matrix_clip() {
-        let data = Matrix::from_vec2(vec![vec![0.0, 1.1], vec![0.01, 0.5]]);
-        let exp = Matrix::from_vec2(vec![vec![0.0001, 0.99], vec![0.01, 0.5]]);
-        data.clip(0.0001, 0.99);
-        assert_eq!(data, exp);
+        let m = Matrix::from_vec2(vec![vec![2,3], vec![4,5]]);
+        m.clip(3,4);
+        let r = Matrix::from_vec2(vec![vec![3,3], vec![4,4]]);
+        assert_eq!(m,r);
     }
 
     #[test]
-    fn la_matrix_log() {
-        let data = Matrix::from_vec(vec![0.7,0.5,0.9]);
-        let res_pos = Matrix::from_vec(vec![-0.35667494393873245, -0.6931471805599453, -0.10536051565782628 ]);
-        let res_neg = Matrix::from_vec(vec![0.35667494393873245, 0.6931471805599453, 0.10536051565782628 ]);
-        assert_eq!(data.log(), res_pos);
-        assert_eq!(data.neg_log(), res_neg);
-        assert_eq!(-data.log(), res_neg);
+    fn la_matrix_max() {
+        let v = Matrix::from_vec(vec![1,2,3]);
+        assert_eq!(v.max(), 3);
+        let m = Matrix::from_vec2(vec![vec![2,3], vec![4,5]]);
+        assert_eq!(m.max(), 5);
+        assert_eq!(m.max_axis(0, false), Matrix::from_vec(vec![4,5]));
+        assert_eq!(m.max_axis(0, true), Matrix::from_vec2(vec![vec![4,5]]));
+        assert_eq!(m.max_axis(1, false), Matrix::from_vec(vec![3,5]));
+        assert_eq!(m.max_axis(1, true), Matrix::from_vec2(vec![vec![3],vec![5]]));
     }
 
     #[test]
-    fn la_vector_operations() {
-        let v1 = Matrix::from_vec(vec![1.0, 2.0, 3.0]);
-        let v2 = Matrix::from_vec(vec![1.0, 2.0, 3.0]);
-        let result = v1.vector_dot(&v2);
-        assert_eq!(result, 14.0);
-        let sum_result = Matrix::from_vec(vec![2.0, 4.0, 6.0]);
-        assert_eq!(v1.vector_add(&v2), sum_result);
-        let v3 = Matrix::from_vec(vec![0.0, -1.23, 0.01, 0.02, -1.0]);
-        let result2 = v3.vector_scalar_maximum(0.0);
-        let exp = Matrix::from_vec(vec![0.0, 0.0, 0.01, 0.02, 0.0]);
-        assert_eq!(result2, exp);
-        let v4 = Matrix::from_vec(vec![0.000001, -1.22, 0.001, 0.22, 1.0]);
-        let exp2 = Matrix::from_vec(vec![0.000001, -1.22, 0.01, 0.22, 1.0]);
-        assert_eq!(v3.vector_maximum(&v4), exp2);
-        let indices = Matrix::from_vec(vec![0.0,1.0,2.0]);
-        let values = Matrix::from_vec2(vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0], vec![7.0, 8.0, 9.0]]);
-        let res = Matrix::from_vec(vec![1.0, 5.0, 9.0]);
-        assert_eq!(values.index_slicing(0..values.rows, indices), res);
+    fn la_matrix_argmax() {
+        let v = Matrix::from_vec(vec![1,2,3]);
+        assert_eq!(v.argmax(), (0,2));
+        let m = Matrix::from_vec2(vec![vec![2,3], vec![4,5]]);
+        assert_eq!(m.argmax(), (1, 1));
+        assert_eq!(m.argmax_axis(0), Matrix::from_vec(vec![1,1]));
+        assert_eq!(m.argmax_axis(1), Matrix::from_vec(vec![1,1]));
+    }
+    #[test]
+    fn la_matrix_sum() {
+        let v = Matrix::from_vec(vec![1,2,3]);
+        assert_eq!(v.sum(), 6);
+        let m = Matrix::from_vec2(vec![vec![2,3], vec![4,5]]);
+        assert_eq!(m.sum(), 14);
+        assert_eq!(m.sum_axis(0, false), Matrix::from_vec(vec![6,8]));
+        assert_eq!(m.sum_axis(0, true), Matrix::from_vec2(vec![vec![6, 8]]));
+        assert_eq!(m.sum_axis(1, false), Matrix::from_vec(vec![5,9]));
+        assert_eq!(m.sum_axis(1, true), Matrix::from_vec2(vec![vec![5],vec![9]]));
+    }
 
 
+    #[test]
+    fn la_matrix_mean() {
+        let m = Matrix::from_vec2(vec![vec![2,3], vec![4,5], vec![6,7]]);
+        assert_eq!(m.mean(), 4.5);
+        assert_eq!(m.mean_axis(0, false), Matrix::from_vec(vec![4.0, 5.0]));
+        assert_eq!(m.mean_axis(0, true),Matrix::from_vec2(vec![vec![4.0, 5.0]]));
+        assert_eq!(m.mean_axis(1, false), Matrix::from_vec(vec![2.5, 4.5, 6.5]));
+        assert_eq!(m.mean_axis(1, true),Matrix::from_vec2(vec![vec![2.5], vec![4.5], vec![6.5]]));
+    }
+    #[test]
+    fn la_matrix_dot() {
+        let v1 = Matrix::from_vec(vec![1,2,3,4]);
+        let v2 = Matrix::from_vec(vec![5,6,7,8]);
+        assert_eq!(v1.v_dot(&v2), 70);
+        let m1 = Matrix::from_vec2(vec![vec![1,2,3,4], vec![5,6,7,8], vec![9,10,11,12]]);
+        let m2 = Matrix::from_vec2(vec![vec![1,2,3,4], vec![5,6,7,8], vec![9,10,11,12], vec![13,14,15,16]]);
+        let mat_mul_res = Matrix::from_vec2(vec![vec![90, 100, 110, 120], vec![202, 228, 254, 280], vec![314, 356, 398, 440]]);
+        assert_eq!(m1.mat_mul(&m2), mat_mul_res);
+        assert_eq!(m1.dot(&m2), mat_mul_res);
+        let mat_vec_res = Matrix::from_vec(vec![30, 70, 110]);
+        assert_eq!(m1.dot(&v1), mat_vec_res);
     }
 
     #[test]
-    fn la_all_fn() {
-        let mat_pos = Matrix::from_vec2(vec![vec![3.333334, 3.34], vec![3.334, 3.333333333334]]);
-        let mat_neg = Matrix::from_vec2(vec![vec![3.333334, 3.00], vec![3.334, 3.333333333334]]);
-        assert!(mat_pos.all(|x| 3.3334 - x < 0.01));
-        assert!(!mat_neg.all(|x| 3.3334 - x < 0.01));
+    fn la_matrix_ln() {
+        let m = Matrix::from_vec2(vec![vec![2.0,3.0], vec![4.0,5.0]]);
+        let r = Matrix::from_vec2(vec![
+ 	            vec![0.6931471805599453, 1.0986122886681098],
+ 	            vec![1.3862943611198906, 1.6094379124341003]]);
+        assert_eq!(m.ln_copy(), r);
+        let neg_r = -(r.clone());
+        assert_eq!(m.neg_ln_copy(), neg_r);
+        m.neg_ln();
+        assert_eq!(m, -r);
     }
-}
+
+    #[test]
+    fn la_matrix_exp() {
+        let m = Matrix::from_vec2(vec![vec![2.0,3.0], vec![4.0,5.0]]);
+        let r = Matrix::from_vec2(vec![
+            vec![7.3890560989306495, 20.085536923187664],
+            vec![54.59815003314423, 148.41315910257657]]);
+        m.exp();
+        assert_eq!(m, r);
+    }
+}  
