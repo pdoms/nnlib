@@ -363,8 +363,29 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
     }
 
     pub fn reshape(&mut self, shape: (isize, isize)) {
-        todo!()
+        let (mut rows, mut cols) = shape;
+        if (rows == -1 && cols > 0) {
+            rows = self.len as isize / cols;
+            assert!(rows*cols == self.len as isize, "cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+            self.cols = cols as usize;
+            self.rows = rows as usize;
+            self.stride = cols as usize;
+        } else if cols == -1 && rows >= 0 {
+            cols = self.len as isize / rows; 
+            assert!(rows*cols == self.len as isize, "cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+            self.cols = cols as usize;
+            self.rows = rows as usize;
+            self.stride = cols as usize;
+        } else if rows >= 0 && cols > 0 {
+            assert!(rows*cols == self.len as isize, "cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+            self.cols = cols as usize;
+            self.rows = rows as usize;
+            self.stride = cols as usize;
+        } else {
+            panic!("cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+        } 
     }
+
 
     pub fn each<F>(&self, f: F) 
     where
@@ -1314,6 +1335,24 @@ mod test {
             assert_eq!(element, res_iter.next().unwrap());
         }
 
+    }
+
+    #[test]
+    fn la_matrix_reshape() {
+        let mut mat = Matrix::from_vec2(vec![vec![1,2], vec![3,4], vec![5,6]]);
+        let res_mat = Matrix::from_vec2(vec![vec![1,2,3], vec![4,5,6]]);
+        let mut mat_c = mat.clone();
+        mat_c.reshape((2,3));
+        assert_eq!(mat_c, res_mat);
+        mat_c.reshape((-1, 2));
+        assert_eq!(mat_c, mat);
+        let flat = Matrix::from_vec2(vec![vec![1,2,3,4,5,6]]);
+        mat_c.reshape((1,-1));
+        assert_eq!(mat_c, flat);
+        let mut v = Matrix::from_vec(vec![0.7, 0.1, 0.2]);
+        v.reshape((-1,1));
+        let res = Matrix::from_vec2(vec![vec![0.7], vec![0.1], vec![0.2]]);
+        assert_eq!(v, res);
     }
     
 }  
