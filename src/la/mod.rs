@@ -123,7 +123,7 @@ impl<T> Clone for Matrix<T> {
             rows: self.rows,
             stride: self.stride,
             len: self.len,
-            ptr
+            ptr,
         }
     }
 }
@@ -360,7 +360,10 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
             std::ptr::copy(self.ptr, m.ptr, self.len*mem_size);
         };
         m
-        
+    }
+
+    pub fn reshape(&mut self, shape: (isize, isize)) {
+        todo!()
     }
 
     pub fn each<F>(&self, f: F) 
@@ -791,6 +794,39 @@ impl Matrix<i32> {
             _ => {
                 panic!("axis {axis} does not exist on Matrix")
             }
+        }
+    }
+}
+
+impl<T> IntoIterator for Matrix<T> {
+    type Item = T;
+    type IntoIter = MatrixIntoIterator<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        MatrixIntoIterator {
+            matrix: self,
+            index: 0
+        }
+    }
+
+}
+
+pub struct MatrixIntoIterator<T> {
+    matrix: Matrix<T>,
+    index: usize
+}
+
+impl<T> Iterator for MatrixIntoIterator<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.matrix.len {
+            let v = unsafe {
+                self.matrix.ptr.add(self.index).read()
+            };
+            self.index += 1;
+            Some(v)
+        } else {
+            None
         }
     }
 }
@@ -1268,4 +1304,16 @@ mod test {
         m.exp();
         assert_eq!(m, r);
     }
+
+    #[test]
+    fn la_matrix_element_iter() {
+        let mat = Matrix::from_vec2(vec![vec![1,2,3,4,5], vec![6,7,8,9,10]]);
+        let res: Vec<i32> = (1..11).into_iter().collect();
+        let mut res_iter = res.into_iter();
+        for element in mat {
+            assert_eq!(element, res_iter.next().unwrap());
+        }
+
+    }
+    
 }  
