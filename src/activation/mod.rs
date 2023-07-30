@@ -129,6 +129,10 @@ impl Activation for Softmax {
 
     fn backward(&mut self, dvalues: Matrix<f64>) {
         self.dinputs = Matrix::like(&dvalues);
+        let len = self.output.len;
+        //for i in 0..len {
+        //    let single_output = self.output.get_row(i).reshape((-1, 1))
+        //}
     }
 }
 
