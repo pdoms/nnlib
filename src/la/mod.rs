@@ -222,6 +222,20 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         matrix
     }
 
+    pub fn diagflat(like: &Matrix<T>) -> Self {
+        let like_c = like.clone();
+        let len = like_c.len;
+        let mat = Matrix::zeroed((len, len));
+        let mut offs = 0;
+        let items: Vec<T> = like_c.into_iter().collect();
+        for i in 0..len {
+            mat.set(items[i], (i, offs));
+            offs += 1;
+        }
+        mat
+    }
+
+
     pub fn shape(&self) -> MatIdx {
         (self.rows, self.cols)
     }
@@ -777,6 +791,16 @@ impl Matrix<f64> {
             }
         }
     }
+
+    fn identity(shape: MatIdx) -> Matrix<f64> {
+        let zeros = Matrix::zeroed(shape);
+        let mut offset = 0;
+        for i in 0..shape.0 {
+            zeros.set(1.0, (i, offset));
+            offset += 1;
+        }
+        zeros
+    }
 }
 
 impl Matrix<i32> {
@@ -816,6 +840,16 @@ impl Matrix<i32> {
                 panic!("axis {axis} does not exist on Matrix")
             }
         }
+    }
+
+    fn identity(shape: MatIdx) -> Matrix<i32> {
+        let zeros = Matrix::zeroed(shape);
+        let mut offset = 0;
+        for i in 0..shape.0 {
+            zeros.set(1, (i, offset));
+            offset += 1;
+        }
+        zeros
     }
 }
 
@@ -1353,6 +1387,20 @@ mod test {
         v.reshape((-1,1));
         let res = Matrix::from_vec2(vec![vec![0.7], vec![0.1], vec![0.2]]);
         assert_eq!(v, res);
+    }
+
+    #[test]
+    fn la_matrix_identity() {
+        let mat = Matrix::from_vec2(vec![vec![1,0,0,0], vec![0,1,0,0], vec![0,0,1,0], vec![0,0,0,1]]);
+        assert_eq!(Matrix::<i32>::identity((4,4)), mat);
+    }
+
+    #[test]
+    fn la_matrix_diagflat() {
+        let src = Matrix::from_vec2(vec![vec![1,2], vec![3,4]]);
+        let mat = Matrix::from_vec2(vec![vec![1,0,0,0], vec![0,2,0,0], vec![0,0,3,0], vec![0,0,0,4]]);
+        let diagfl = Matrix::diagflat(&src);
+        assert_eq!(diagfl, mat);
     }
     
 }  
