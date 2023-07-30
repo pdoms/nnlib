@@ -6,7 +6,7 @@
 
 use crate::la::Matrix;
 
-pub fn calculate_loss<L>(loss: L, y_pred: Matrix, y_true: Matrix) -> f64
+pub fn calculate_loss<L>(loss: L, y_pred: Matrix<f64>, y_true: Matrix<i32>) -> f64
 where
     L: Loss,
 {
@@ -16,23 +16,30 @@ where
 
 pub trait Loss 
 {
-    fn forward(&self, y_pred: Matrix, y_true: Matrix) -> Matrix;
+    fn forward(&self, y_pred: Matrix<f64>, y_true: Matrix<i32>) -> Matrix<f64>;
 }
 
 const CCEMINMAXCLIP: f64 = 1e-7; 
 pub struct CatCrossEnt;
 
 impl Loss for CatCrossEnt {
-    fn forward(&self, y_pred: Matrix, y_true: Matrix) -> Matrix {
-        let confidences: Matrix;
+    fn forward(&self, y_pred: Matrix<f64>, y_true: Matrix<i32>) -> Matrix<f64> {
+        let confidences: Matrix<f64>;
         y_pred.clip(CCEMINMAXCLIP, 1.0-CCEMINMAXCLIP);
         if y_true.is_vector() {
-            unimplemented!("categorical labels loss")
+            assert!(y_pred.rows == y_true.len, "Labels don't match: {} (y_pred.rows) != {} (y_true.len)", y_pred.rows, y_true.len);
+            confidences = Matrix::new((0, y_pred.rows));
+            for i in 0..y_true.len {
+                let idx = y_true.get((0, i)) as usize;
+                let v = y_pred.get((i, idx));
+                confidences.set(v, (0,i));
+            }
         } else {
-            let r = y_pred * y_true;
+            let r = y_pred * Matrix::<f64>::from(y_true);
             confidences = r.sum_axis(1, false);
         }
-        confidences.neg_log()
+        confidences.neg_ln();
+        confidences
     }
 }
 
@@ -52,12 +59,12 @@ mod test {
                 vec![0.02, 0.9, 0.08]
         ]);
         let class_targets = Matrix::from_vec2(vec![
-                vec![1.0, 0.0, 0.0],
-                vec![0.0, 1.0, 0.0],
-                vec![0.0, 1.0, 0.0]
+                vec![1, 0, 0],
+                vec![0, 1, 0],
+                vec![0, 1, 0]
         ]);
 
-        let index_targets = Matrix::from_vec(vec![0.0, 1.0, 1.0]);
+        let index_targets = Matrix::from_vec(vec![0, 1, 1]);
 
         let loss = calculate_loss(CatCrossEnt, softmax_out.clone(), class_targets);
         let loss_idx = calculate_loss(CatCrossEnt, softmax_out, index_targets);

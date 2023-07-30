@@ -14,79 +14,121 @@ use crate::la::Matrix;
 pub trait Activation 
 {
     fn new() -> Self;
-    fn forward(&mut self, inputs: &Matrix);
+    fn forward(&mut self, inputs: &Matrix<f64>);
+    fn backward(&mut self, dvalues: Matrix<f64>);
 }
 
-
+const LEAK: f64 = 0.01;
 
 
 
 
 pub struct ReLu
 {
-    output: Matrix
+    output: Matrix<f64>,
+    dinputs: Matrix<f64>
 }
 
 pub struct LeakyReLu
 {
-    output: Matrix
+    output: Matrix<f64>,
+    dinputs: Matrix<f64>
 }
 
 pub struct Sigmoid 
 {
-    output: Matrix
+    output: Matrix<f64>,
+    dinputs: Matrix<f64>
 }
 
 pub struct Softmax
 {
-    output: Matrix
+    output: Matrix<f64>,
+    dinputs: Matrix<f64>
 }
 
 impl Activation for ReLu {
     fn new() -> Self {
         Self {
-            output: Matrix::new(1, 1)
+            output: Matrix::new((1, 1)),
+            dinputs: Matrix::new((1, 1))
         }
     }
-    fn forward(&mut self, inputs: &Matrix) {
-        self.output = inputs.maximum_scalar(0.0);
+    fn forward(&mut self, inputs: &Matrix<f64>) {
+        self.output = inputs.map(|x| {if x >= 0.0 {x} else {0.0}});
     }
+
+    fn backward(&mut self, dvalues: Matrix<f64>) {
+        self.dinputs = dvalues.map(|x| {
+            if x <= 0.0 {
+                0.0
+            } else {
+                x
+            }
+        });
+    }
+
 }
 
 
 impl Activation for LeakyReLu {
     fn new() -> Self {
         Self {
-            output: Matrix::new(1, 1)
+            output: Matrix::new((1, 1)),
+            dinputs: Matrix::new((1, 1))
+
         }
     }
-    fn forward(&mut self, inputs: &Matrix) {
-        self.output = inputs.for_each_set(|x| {if x >= 0.0 {x} else {0.01*x}})    
+    fn forward(&mut self, inputs: &Matrix<f64>) {
+        self.output = inputs.map(|x| {if x >= 0.0 {x} else {LEAK*x}})    
+    }
+
+    fn backward(&mut self, dvalues: Matrix<f64>) {
+        self.dinputs = dvalues.map(|x| {if x < 0.0 {LEAK} else {1.0}})
     }
 }
 
 impl Activation for Sigmoid {
     fn new() -> Self {
         Self {
-            output: Matrix::new(1, 1)
+            output: Matrix::new((1, 1)),
+            dinputs: Matrix::new((1, 1)),
         }
     }
-    fn forward(&mut self, inputs: &Matrix) {
-        self.output =inputs.for_each_set(|x| {
+    fn forward(&mut self, inputs: &Matrix<f64>) {
+        self.output = inputs.map(|x| {
             1.0 / (1.0 + E.powf(-x))
         })    
     }
+
+    fn backward(&mut self, dvalues: Matrix<f64>) {
+        let f = sigmoid(&dvalues);
+        self.dinputs = f.clone() * (Matrix::like_with(&f, 1.0) - f)
+    }
 }
+
+
+pub fn sigmoid(values: &Matrix<f64>) -> Matrix<f64> {
+    values.map(|x| {
+            1.0 / (1.0 + E.powf(-x))
+    })
+}
+
 
 impl Activation for Softmax {
     fn new() -> Self {
         Self {
-            output: Matrix::new(1, 1)
+            output: Matrix::new((1, 1)),
+            dinputs: Matrix::new((1,1)),
         }
     }
-    fn forward(&mut self, inputs: &Matrix) {
-        let exp = (inputs.clone() - inputs.max_axis(1, true)).exp();
+    fn forward(&mut self, inputs: &Matrix<f64>) {
+        let exp = (inputs.clone() - inputs.max_axis(1, true)).exp_copy();
         self.output = exp.clone() / exp.sum_axis(1, true);
+    }
+
+    fn backward(&mut self, dvalues: Matrix<f64>) {
+        self.dinputs = Matrix::like(&dvalues);
     }
 }
 
