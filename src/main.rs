@@ -4,6 +4,7 @@ mod layer;
 mod activation;
 mod loss;
 mod metrics;
+mod models;
 
 
 

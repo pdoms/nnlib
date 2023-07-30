@@ -756,43 +756,56 @@ impl Matrix<f64> {
 }
 
 impl Matrix<i32> {
-pub fn mean(&self) -> f64 {
-    f64::from(self.sum()) / self.len as f64
-}
-
-pub fn mean_axis(&self, axis: usize, keepdims: bool) -> Matrix<f64> {
-    match axis {
-       0 => {
-            let mut result = Matrix::new((1, self.cols));
-                for i in 0..self.cols {
-                    let col = self.get_col(i, false);
-                    result.set(col.mean(), (0, i));
+    pub fn mean(&self) -> f64 {
+        f64::from(self.sum()) / self.len as f64
+    }
+    
+    pub fn mean_axis(&self, axis: usize, keepdims: bool) -> Matrix<f64> {
+        match axis {
+           0 => {
+                let mut result = Matrix::new((1, self.cols));
+                    for i in 0..self.cols {
+                        let col = self.get_col(i, false);
+                        result.set(col.mean(), (0, i));
+                    }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
                 }
-            if keepdims {
-                result
-            } else {
-                result.flatten();
-                result
+            },
+            1 => {
+                let mut result = Matrix::new((self.rows, 1));
+                for i in 0..self.rows {
+                    let col = self.get_row(i);
+                    result.set(col.mean(), (i, 0));
+                }
+                if keepdims {
+                    result
+                } else {
+                    result.flatten();
+                    result
+                }
+            },
+            _ => {
+                panic!("axis {axis} does not exist on Matrix")
             }
-        },
-        1 => {
-            let mut result = Matrix::new((self.rows, 1));
-            for i in 0..self.rows {
-                let col = self.get_row(i);
-                result.set(col.mean(), (i, 0));
-            }
-            if keepdims {
-                result
-            } else {
-                result.flatten();
-                result
-            }
-        },
-        _ => {
-            panic!("axis {axis} does not exist on Matrix")
         }
     }
 }
+
+
+impl std::convert::From<Matrix<i32>> for Matrix<f64> {
+    fn from(m: Matrix<i32>) -> Self {
+        let conv = Matrix::<f64>::new(m.shape());
+        for i in 0..m.rows {
+            for j in 0..m.cols {
+                conv.set(f64::from(m.get((i,j))), (i,j));
+            }
+        }
+        conv
+    }
 }
 
 impl<T: Add + AddAssign + Sub  + Mul + Div + Neg + Copy + SampleUniform + PartialEq + PartialOrd + Default + Mul<Output = T>>  Matrix<T> {
