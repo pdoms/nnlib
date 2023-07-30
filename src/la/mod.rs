@@ -123,7 +123,7 @@ impl<T> Clone for Matrix<T> {
             rows: self.rows,
             stride: self.stride,
             len: self.len,
-            ptr
+            ptr,
         }
     }
 }
@@ -221,6 +221,20 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         }
         matrix
     }
+
+    pub fn diagflat(like: &Matrix<T>) -> Self {
+        let like_c = like.clone();
+        let len = like_c.len;
+        let mat = Matrix::zeroed((len, len));
+        let mut offs = 0;
+        let items: Vec<T> = like_c.into_iter().collect();
+        for i in 0..len {
+            mat.set(items[i], (i, offs));
+            offs += 1;
+        }
+        mat
+    }
+
 
     pub fn shape(&self) -> MatIdx {
         (self.rows, self.cols)
@@ -360,8 +374,32 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
             std::ptr::copy(self.ptr, m.ptr, self.len*mem_size);
         };
         m
-        
     }
+
+    pub fn reshape(&mut self, shape: (isize, isize)) {
+        let (mut rows, mut cols) = shape;
+        if (rows == -1 && cols > 0) {
+            rows = self.len as isize / cols;
+            assert!(rows*cols == self.len as isize, "cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+            self.cols = cols as usize;
+            self.rows = rows as usize;
+            self.stride = cols as usize;
+        } else if cols == -1 && rows >= 0 {
+            cols = self.len as isize / rows; 
+            assert!(rows*cols == self.len as isize, "cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+            self.cols = cols as usize;
+            self.rows = rows as usize;
+            self.stride = cols as usize;
+        } else if rows >= 0 && cols > 0 {
+            assert!(rows*cols == self.len as isize, "cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+            self.cols = cols as usize;
+            self.rows = rows as usize;
+            self.stride = cols as usize;
+        } else {
+            panic!("cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
+        } 
+    }
+
 
     pub fn each<F>(&self, f: F) 
     where
@@ -753,6 +791,16 @@ impl Matrix<f64> {
             }
         }
     }
+
+    fn identity(shape: MatIdx) -> Matrix<f64> {
+        let zeros = Matrix::zeroed(shape);
+        let mut offset = 0;
+        for i in 0..shape.0 {
+            zeros.set(1.0, (i, offset));
+            offset += 1;
+        }
+        zeros
+    }
 }
 
 impl Matrix<i32> {
@@ -791,6 +839,49 @@ impl Matrix<i32> {
             _ => {
                 panic!("axis {axis} does not exist on Matrix")
             }
+        }
+    }
+
+    fn identity(shape: MatIdx) -> Matrix<i32> {
+        let zeros = Matrix::zeroed(shape);
+        let mut offset = 0;
+        for i in 0..shape.0 {
+            zeros.set(1, (i, offset));
+            offset += 1;
+        }
+        zeros
+    }
+}
+
+impl<T> IntoIterator for Matrix<T> {
+    type Item = T;
+    type IntoIter = MatrixIntoIterator<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        MatrixIntoIterator {
+            matrix: self,
+            index: 0
+        }
+    }
+
+}
+
+pub struct MatrixIntoIterator<T> {
+    matrix: Matrix<T>,
+    index: usize
+}
+
+impl<T> Iterator for MatrixIntoIterator<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.matrix.len {
+            let v = unsafe {
+                self.matrix.ptr.add(self.index).read()
+            };
+            self.index += 1;
+            Some(v)
+        } else {
+            None
         }
     }
 }
@@ -1268,4 +1359,48 @@ mod test {
         m.exp();
         assert_eq!(m, r);
     }
+
+    #[test]
+    fn la_matrix_element_iter() {
+        let mat = Matrix::from_vec2(vec![vec![1,2,3,4,5], vec![6,7,8,9,10]]);
+        let res: Vec<i32> = (1..11).into_iter().collect();
+        let mut res_iter = res.into_iter();
+        for element in mat {
+            assert_eq!(element, res_iter.next().unwrap());
+        }
+
+    }
+
+    #[test]
+    fn la_matrix_reshape() {
+        let mut mat = Matrix::from_vec2(vec![vec![1,2], vec![3,4], vec![5,6]]);
+        let res_mat = Matrix::from_vec2(vec![vec![1,2,3], vec![4,5,6]]);
+        let mut mat_c = mat.clone();
+        mat_c.reshape((2,3));
+        assert_eq!(mat_c, res_mat);
+        mat_c.reshape((-1, 2));
+        assert_eq!(mat_c, mat);
+        let flat = Matrix::from_vec2(vec![vec![1,2,3,4,5,6]]);
+        mat_c.reshape((1,-1));
+        assert_eq!(mat_c, flat);
+        let mut v = Matrix::from_vec(vec![0.7, 0.1, 0.2]);
+        v.reshape((-1,1));
+        let res = Matrix::from_vec2(vec![vec![0.7], vec![0.1], vec![0.2]]);
+        assert_eq!(v, res);
+    }
+
+    #[test]
+    fn la_matrix_identity() {
+        let mat = Matrix::from_vec2(vec![vec![1,0,0,0], vec![0,1,0,0], vec![0,0,1,0], vec![0,0,0,1]]);
+        assert_eq!(Matrix::<i32>::identity((4,4)), mat);
+    }
+
+    #[test]
+    fn la_matrix_diagflat() {
+        let src = Matrix::from_vec2(vec![vec![1,2], vec![3,4]]);
+        let mat = Matrix::from_vec2(vec![vec![1,0,0,0], vec![0,2,0,0], vec![0,0,3,0], vec![0,0,0,4]]);
+        let diagfl = Matrix::diagflat(&src);
+        assert_eq!(diagfl, mat);
+    }
+    
 }  
