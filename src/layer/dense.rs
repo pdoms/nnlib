@@ -6,6 +6,7 @@
 use crate::la::Matrix;
 use crate::layer::Layer;
 
+#[derive(Clone)]
 pub struct Dense 
 {
     pub weights: Matrix<f64>,

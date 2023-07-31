@@ -16,35 +16,40 @@ pub trait Activation
     fn new() -> Self;
     fn forward(&mut self, inputs: &Matrix<f64>);
     fn backward(&mut self, dvalues: Matrix<f64>);
-}
+    fn output(&self) -> &Matrix<f64>; 
+    
+} 
 
 const LEAK: f64 = 0.01;
 
 
 
-
+#[derive(Clone)]
 pub struct ReLu
 {
-    output: Matrix<f64>,
-    dinputs: Matrix<f64>
+    pub output: Matrix<f64>,
+    pub dinputs: Matrix<f64>
 }
 
+#[derive(Clone)]
 pub struct LeakyReLu
 {
-    output: Matrix<f64>,
-    dinputs: Matrix<f64>
+    pub output: Matrix<f64>,
+    pub dinputs: Matrix<f64>
 }
 
+#[derive(Clone)]
 pub struct Sigmoid 
 {
-    output: Matrix<f64>,
-    dinputs: Matrix<f64>
+    pub output: Matrix<f64>,
+    pub dinputs: Matrix<f64>
 }
 
+#[derive(Clone)]
 pub struct Softmax
 {
-    output: Matrix<f64>,
-    dinputs: Matrix<f64>
+    pub output: Matrix<f64>,
+    pub dinputs: Matrix<f64>
 }
 
 impl Activation for ReLu {
@@ -54,6 +59,11 @@ impl Activation for ReLu {
             dinputs: Matrix::new((1, 1))
         }
     }
+
+    fn output(&self) -> &Matrix<f64> {
+        &self.output
+    }
+
     fn forward(&mut self, inputs: &Matrix<f64>) {
         self.output = inputs.map(|x| {if x >= 0.0 {x} else {0.0}});
     }
@@ -79,6 +89,9 @@ impl Activation for LeakyReLu {
 
         }
     }
+    fn output(&self) -> &Matrix<f64> {
+        &self.output
+    }
     fn forward(&mut self, inputs: &Matrix<f64>) {
         self.output = inputs.map(|x| {if x >= 0.0 {x} else {LEAK*x}})    
     }
@@ -94,6 +107,9 @@ impl Activation for Sigmoid {
             output: Matrix::new((1, 1)),
             dinputs: Matrix::new((1, 1)),
         }
+    }
+    fn output(&self) -> &Matrix<f64> {
+        &self.output
     }
     fn forward(&mut self, inputs: &Matrix<f64>) {
         self.output = inputs.map(|x| {
@@ -122,6 +138,9 @@ impl Activation for Softmax {
             dinputs: Matrix::new((1,1)),
         }
     }
+    fn output(&self) -> &Matrix<f64> {
+        &self.output
+    }
     fn forward(&mut self, inputs: &Matrix<f64>) {
         let exp = (inputs.clone() - inputs.max_axis(1, true)).exp_copy();
         self.output = exp.clone() / exp.sum_axis(1, true);
@@ -129,10 +148,16 @@ impl Activation for Softmax {
 
     fn backward(&mut self, dvalues: Matrix<f64>) {
         self.dinputs = Matrix::like(&dvalues);
-        let len = self.output.len;
-        //for i in 0..len {
-        //    let single_output = self.output.get_row(i).reshape((-1, 1))
-        //}
+        let len = self.output.rows;
+        for i in 0..len {
+            let mut single_output = self.output.get_row(i);
+            single_output.reshape((-1, 1));
+            let jacobian = Matrix::diagflat(&single_output) - single_output.dot(&single_output.transpose_clone());
+            let single_dvals = dvalues.get_row(i);
+            println!("{single_dvals}");
+            let sample = jacobian.dot(&single_dvals);
+            self.dinputs.set_row(i, &sample);
+        }
     }
 }
 
@@ -160,7 +185,7 @@ mod test {
         ]);
         let mut act = ReLu::new();
         act.forward(&data);
-        assert_eq!(act.output, exp);
+        assert_eq!(act.output(), &exp);
     }
 
 
@@ -180,7 +205,7 @@ mod test {
         ]);
         let mut act = LeakyReLu::new();
         act.forward(&data);
-        assert_eq!(act.output, exp);
+        assert_eq!(act.output(), &exp);
     }
 
     #[test]
@@ -199,7 +224,7 @@ mod test {
         ]);
         let mut act = Sigmoid::new();
         act.forward(&data);
-        assert_eq!(act.output, exp);
+        assert_eq!(act.output(), &exp);
     }
 
     #[test]
@@ -215,12 +240,22 @@ mod test {
         let mut softmax = Softmax::new();
         dense1.forward(&data);
         relu.forward(&dense1.outputs);
-        dense2.forward(&relu.output);
+        dense2.forward(relu.output());
         softmax.forward(&dense2.outputs);
-        let v = softmax.output;
-        assert!(4.0 - v.sum() < 0.01);
-        
+        assert!(4.0 - softmax.output().sum() < 0.01);
 
+        let dvals = Matrix::from_vec2(vec![
+ 	vec![-0.4761904761904762, -0.0, -0.0],
+ 	vec![-0.0, -0.6666666666666666, -0.0],
+ 	vec![-0.0, -0.3703703703703704, -0.0]
+ ]);
+        softmax.output = Matrix::from_vec2(vec![
+                vec![0.7,  0.1, 0.2],
+                vec![0.1,  0.5, 0.4], 
+                vec![0.02, 0.9, 0.08]
+        ]);
+        softmax.backward(dvals);
+        println!("{}", softmax.dinputs);
     }
 }
 
