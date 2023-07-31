@@ -188,12 +188,6 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         }
     }
 
-    
-
-    pub fn indices_one_hot(indices: &Matrix<T>, n: usize) -> Matrix<T> {
-        todo!()
-    }
-
     pub fn from_vec(mut data: Vec<T>) -> Self {
         let len = data.len();
         let mem_size =std::mem::size_of::<T>(); 
@@ -268,7 +262,7 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         }
     }
 
-    fn get_row(&self, row: usize) -> Matrix<T> {
+    pub fn get_row(&self, row: usize) -> Matrix<T> {
         if self.is_vector() {
             return self.clone()
         }
@@ -283,7 +277,7 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         mat
     }
 
-    fn set_row(&self, i: usize, row: &Matrix<T>) {
+    pub fn set_row(&self, i: usize, row: &Matrix<T>) {
         assert!(row.is_vector(), "src is not a vector");
         assert!(self.cols == row.cols, "cols don't match");
         self.bound_check_rows(i);
@@ -295,7 +289,7 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         }
     }
 
-    fn get_col(&self, col: usize, keepdims: bool) -> Matrix<T> {
+    pub fn get_col(&self, col: usize, keepdims: bool) -> Matrix<T> {
         assert!(col < self.cols, "index out of range");
         assert!(!self.is_vector(), "column can only be taken from 2D array, this is a vector");
         if !keepdims {
@@ -323,7 +317,7 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         }
     }
 
-    fn set_col(&self, i: usize, col: &Matrix<T>) {
+    pub fn set_col(&self, i: usize, col: &Matrix<T>) {
         if col.is_vector() {
             assert!(self.rows == col.cols, "rows don't match");
             self.bound_check_cols(i);
@@ -359,7 +353,12 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
         unsafe {
             std::ptr::copy(m.ptr, self.ptr, self.len*mem_size);
         };
+    }
 
+    pub fn transpose_clone(&self) -> Matrix<T> {
+        let mut mat = self.clone();
+        mat.transpose();
+        mat
     }
 
     pub fn flatten(&mut self) {
@@ -399,6 +398,7 @@ impl<T: Add + AddAssign + Mul + Div + Neg + Copy + PartialEq + PartialOrd + Defa
             panic!("cannot reshape Matrix of '{:?}' into shape ({rows}, {cols})", self.shape());
         } 
     }
+
 
 
     pub fn each<F>(&self, f: F) 
@@ -801,6 +801,32 @@ impl Matrix<f64> {
         }
         zeros
     }
+
+    pub fn truthiness(&self, other: &Matrix<f64>) -> Matrix<f64> {
+        assert!(self.shape_match(other), "shapes don't match");
+        let results = Matrix::like_with(&self, 0.0);
+        if self.is_vector() {
+            for i in 0..self.cols {
+                let a = self.get((0, i));
+                let b = other.get((0, i));
+                if a == b {
+                    results.set(1.0, (0,i))
+                }
+            }
+            results
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let a = self.get((i, j));
+                    let b = other.get((i, j));
+                    if a == b {
+                        results.set(1.0, (i,j))
+                    }
+                }
+            }
+            results
+        }
+    }
 }
 
 impl Matrix<i32> {
@@ -851,6 +877,32 @@ impl Matrix<i32> {
         }
         zeros
     }
+
+    pub fn truthiness(&self, other: &Matrix<i32>) -> Matrix<i32> {
+        assert!(self.shape_match(&other), "shapes don't match");
+        let results = Matrix::like_with(&self, 0);
+        if self.is_vector() {
+            for i in 0..self.cols {
+                let a = self.get((0, i));
+                let b = other.get((0, i));
+                if a == b {
+                    results.set(1, (0,i))
+                }
+            }
+            results
+        } else {
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let a = self.get((i, j));
+                    let b = other.get((i, j));
+                    if a == b {
+                        results.set(1, (i,j))
+                    }
+                }
+            }
+            results
+        }
+    }
 }
 
 impl<T> IntoIterator for Matrix<T> {
@@ -889,6 +941,19 @@ impl<T> Iterator for MatrixIntoIterator<T> {
 
 impl std::convert::From<Matrix<i32>> for Matrix<f64> {
     fn from(m: Matrix<i32>) -> Self {
+        let conv = Matrix::<f64>::new(m.shape());
+        for i in 0..m.rows {
+            for j in 0..m.cols {
+                conv.set(f64::from(m.get((i,j))), (i,j));
+            }
+        }
+        conv
+    }
+}
+
+
+impl std::convert::From<&Matrix<i32>> for Matrix<f64> {
+    fn from(m: &Matrix<i32>) -> Self {
         let conv = Matrix::<f64>::new(m.shape());
         for i in 0..m.rows {
             for j in 0..m.cols {
@@ -1057,6 +1122,49 @@ impl<T> Mul<Matrix<T>> for Matrix<T>
     }
 }
 
+impl<T> Mul<Matrix<T>> for &Matrix<T> 
+    where
+        T: Mul<Output = T> + fmt::Display + fmt::Debug + Default + Copy + Add + AddAssign + Sub + Div + Neg + PartialEq + PartialOrd + Default 
+{
+    type Output = Matrix<T>;
+    fn mul(self, rhs: Matrix<T>) -> Matrix<T> {
+        if self.shape_match(&rhs) {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let left = self.get((i,j));
+                    let right = rhs.get((i, j));
+                    result.set(left * right, (i, j))
+                }
+            }
+            result
+        } else if self.col_match(&rhs) && rhs.is_vector() {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.rows {
+                for j in 0..self.cols {
+                    let left = self.get((i,j));
+                    let right = rhs.get((0, j));
+                    result.set(left * right, (i, j))
+                }
+            }
+            result
+        } else if self.row_match(&rhs) && rhs.cols == 1 {
+            let result = Matrix::new((self.rows, self.cols));
+            for i in 0..self.cols {
+                let col = self.get_col(i, false);
+                for j in 0..self.rows {
+                    let left = col.get((0,j));
+                    let right = rhs.get((j, 0));
+                    col.set(left * right, (0, j));
+                }
+                result.set_col(i, &col)
+            }
+            result
+        } else {
+            panic!("cannot match addends")
+        }
+    }
+}
 impl<T: Div<Output = T> + fmt::Display + fmt::Debug + Default + Copy + Add + AddAssign + Sub + Mul + Neg + PartialEq + PartialOrd + Default + Mul<Output = T>> Div for Matrix<T> {
     type Output = Self;
     fn div(self, rhs: Self) -> Self::Output {
@@ -1401,6 +1509,14 @@ mod test {
         let mat = Matrix::from_vec2(vec![vec![1,0,0,0], vec![0,2,0,0], vec![0,0,3,0], vec![0,0,0,4]]);
         let diagfl = Matrix::diagflat(&src);
         assert_eq!(diagfl, mat);
+    }
+
+    #[test]
+    fn la_matrix_truthiness() {
+        let mat1 = Matrix::from_vec2(vec![vec![1,2], vec![3,4]]);
+        let mat2 = Matrix::from_vec2(vec![vec![1,1], vec![4,4]]);
+        let res = Matrix::from_vec2(vec![vec![1,0], vec![0,1]]);
+        assert_eq!(mat1.truthiness(&mat2), res);
     }
     
 }  
